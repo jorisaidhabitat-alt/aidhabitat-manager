@@ -157,10 +157,8 @@ class DataService {
     );
   }
 
-  /// Toggle local-only du flag « bénéficiaire préparé » d'un dossier
-  /// (coche ronde dans le bandeau bénéficiaire). Voir
-  /// [DossierRepository.setBeneficiaryPrepared] — pas de sync NocoDB
-  /// en v1 (le flag reste sur l'appareil).
+  /// Met à jour le flag « bénéficiaire préparé » d'un dossier et le place
+  /// dans la file de synchronisation pour les autres appareils.
   Future<void> setBeneficiaryPrepared({
     required String dossierLocalId,
     required bool prepared,
@@ -940,8 +938,8 @@ class DataService {
       // those with no Dart model representation — cheminement_*, rooms_json,
       // heating_details_json, medicalContext, autonomy, occupants, etc.)
       // are persisted to SQLite. UPDATE semantics inside
-      // mergeRemoteDossierPayloads also preserve local-only columns that
-      // the server doesn't know about.
+      // mergeRemoteDossierPayloads préserve aussi les colonnes réellement
+      // locales que le serveur ne connaît pas.
       final rawPayloads = await _nocodbApiClient.fetchDossierPayloads();
       if (rawPayloads.isEmpty) return false;
       await _dossierRepository.mergeRemoteDossierPayloads(rawPayloads);

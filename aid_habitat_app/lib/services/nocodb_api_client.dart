@@ -2221,6 +2221,7 @@ class NocodbApiClient {
       envoiRapport: json['envoiRapport']?.toString() ?? '',
       personnesPresentesVisite:
           json['personnesPresentesVisite']?.toString() ?? '',
+      beneficiaryPrepared: _parseBool(json['beneficiaryPrepared']),
       medicalContext: json['medicalContext'] is Map
           ? MedicalContext.fromJson(
               (json['medicalContext'] as Map).cast<String, dynamic>(),

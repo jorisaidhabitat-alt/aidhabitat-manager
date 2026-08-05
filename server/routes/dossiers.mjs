@@ -158,6 +158,9 @@ router.patch('/api/dossiers/:dossierId', requireAuth, async (req, res, next) => 
       nature_accompagnement: updates.natureAccompagnement,
       envoi_rapport: updates.envoiRapport,
       personnes_presentes_visite: updates.personnesPresentesVisite,
+      beneficiaire_prepare: Object.prototype.hasOwnProperty.call(updates, 'beneficiaryPrepared')
+        ? Boolean(updates.beneficiaryPrepared)
+        : undefined,
       status: updates.status,
       visit_date: nullableString(updates.visitDate),
       ergo_id: Object.prototype.hasOwnProperty.call(updates, 'ergoId')

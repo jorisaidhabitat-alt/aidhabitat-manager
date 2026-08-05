@@ -379,7 +379,7 @@ const FIELD_SETS = {
   ],
   dossiers: [
     'uuid_source', 'patient_id', 'beneficiaires_id', 'status', 'ergo_id', 'visit_date', 'compte_anah',
-    'nature_accompagnement', 'envoi_rapport', 'personnes_presentes_visite', 'created_at', 'CreatedAt', 'UpdatedAt',
+    'nature_accompagnement', 'envoi_rapport', 'personnes_presentes_visite', 'beneficiaire_prepare', 'created_at', 'CreatedAt', 'UpdatedAt',
   ],
   logements: [
     'uuid_source', 'beneficiaire_id', 'beneficiaires_id', 'type_de_logement', 'annee_construction', 'annee_habitation',
@@ -2400,6 +2400,7 @@ const createVirtualDossier = (beneficiaryRecord, appBeneficiaryId, housingRecord
   natureAccompagnement: stringValue(field(dossierRecord, 'nature_accompagnement')),
   envoiRapport: stringValue(field(dossierRecord, 'envoi_rapport')),
   personnesPresentesVisite: stringValue(field(dossierRecord, 'personnes_presentes_visite') || field(infoRecord, 'personnes_presentes')),
+  beneficiaryPrepared: toBool(field(dossierRecord, 'beneficiaire_prepare')),
   autonomyNotes: '',
   plans: {
     PF1: { id: 'PF1', works: [], grants: [] },
@@ -2428,6 +2429,7 @@ const createDossier = (beneficiaryRecord, appBeneficiaryId, dossierRecord, housi
   natureAccompagnement: stringValue(field(dossierRecord, 'nature_accompagnement')),
   envoiRapport: stringValue(field(dossierRecord, 'envoi_rapport')),
   personnesPresentesVisite: stringValue(field(dossierRecord, 'personnes_presentes_visite') || field(infoRecord, 'personnes_presentes')),
+  beneficiaryPrepared: toBool(field(dossierRecord, 'beneficiaire_prepare')),
   autonomyNotes: '',
   plans: {
     PF1: { id: 'PF1', works: [], grants: [] },
@@ -7214,6 +7216,9 @@ app.patch('/api/dossiers/:dossierId', requireAuth, async (req, res, next) => {
       nature_accompagnement: updates.natureAccompagnement,
       envoi_rapport: updates.envoiRapport,
       personnes_presentes_visite: updates.personnesPresentesVisite,
+      beneficiaire_prepare: Object.prototype.hasOwnProperty.call(updates, 'beneficiaryPrepared')
+        ? Boolean(updates.beneficiaryPrepared)
+        : undefined,
       status: updates.status,
       visit_date: nullableString(updates.visitDate),
       ergo_id: Object.prototype.hasOwnProperty.call(updates, 'ergoId')

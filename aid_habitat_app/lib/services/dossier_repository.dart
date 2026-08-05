@@ -266,26 +266,16 @@ class DossierRepository {
     SyncEngine().notify();
   }
 
-  /// Toggle local-only du flag « bénéficiaire préparé » sur un dossier
-  /// (demande utilisateur 2026-05-05). Pas de sync NocoDB en v1 — la
-  /// colonne `beneficiary_prepared` n'existe que côté SQLite. Si une
-  /// future version veut la sync, il faudra :
-  ///   - ajouter une colonne miroir dans NocoDB (`beneficiaire_prepare`)
-  ///   - mapper dans `nocodb_sync_service.dart`
-  ///   - enqueuer une `sync_op` ici
+  /// Met à jour le flag « bénéficiaire préparé » en local, puis l'ajoute à
+  /// la file de synchronisation du dossier. L'écriture SQLite reste
+  /// immédiate hors ligne et NocoDB réconcilie ensuite les autres appareils.
   Future<void> setBeneficiaryPrepared({
     required String dossierLocalId,
     required bool prepared,
   }) async {
-    final db = await _database.database;
-    final now = DateTime.now().toIso8601String();
-    await db.update(
-      'dossiers',
-      {'beneficiary_prepared': prepared ? 1 : 0, 'updated_at': now},
-      where: 'local_id = ?',
-      whereArgs: [dossierLocalId],
-    );
-    // Pas de SyncEngine().notify() : champ local-only.
+    await updateDossierFields(dossierLocalId, {
+      'beneficiary_prepared': prepared ? 1 : 0,
+    });
   }
 
   static String _generateLocalId() {
@@ -523,6 +513,7 @@ class DossierRepository {
           'ergo_id': dossier.ergoId,
           'visit_date': dossier.visitDate,
           'autonomy_notes': dossier.autonomyNotes,
+          'beneficiary_prepared': dossier.beneficiaryPrepared ? 1 : 0,
           'plans_json': jsonEncode(dossier.plans.keys.toList()),
           'created_at': dossier.createdAt,
           'updated_at': now,
@@ -1026,8 +1017,7 @@ class DossierRepository {
 
   /// Insert or UPDATE a row identified by `local_id`. If a row exists, the
   /// provided [data] is merged via UPDATE so columns not included in [data]
-  /// keep their current values (important for local-only flags that the
-  /// server doesn't return). Otherwise a fresh INSERT is performed.
+  /// keep their current values. Otherwise a fresh INSERT is performed.
   /// Colonnes des `patients` dépendant d'une table de référence côté
   /// NocoDB (`situation_proprietaire`, `statut_occupation`,
   /// `dependances_particulieres`, `caisses_retraite`, `caisses_retraite_comp`).
@@ -1350,6 +1340,8 @@ class DossierRepository {
       'envoi_rapport': raw['envoiRapport']?.toString() ?? '',
       'personnes_presentes_visite':
           raw['personnesPresentesVisite']?.toString() ?? '',
+      if (raw.containsKey('beneficiaryPrepared'))
+        'beneficiary_prepared': _asBoolInt(raw['beneficiaryPrepared']),
       'medical_context_json': raw['medicalContext'] is Map
           ? jsonEncode(raw['medicalContext'])
           : null,
@@ -1505,6 +1497,7 @@ class DossierRepository {
         'ergo_id': remote.ergoId,
         'visit_date': remote.visitDate,
         'autonomy_notes': remote.autonomyNotes,
+        'beneficiary_prepared': remote.beneficiaryPrepared ? 1 : 0,
         'plans_json': jsonEncode(remote.plans.keys.toList()),
         'created_at': remote.createdAt,
         'updated_at': now,
@@ -1542,47 +1535,47 @@ class DossierRepository {
   ) async {
     final db = await _database.database;
     final now = DateTime.now().toIso8601String();
+    var enqueued = false;
 
-    // Optimisation 2026-05-13 : diff avec la row dossiers existante pour
-    // ne pousser au serveur QUE les champs réellement modifiés. Avant
-    // ce changement, chaque toggle « compte ANAH » / « envoi rapport »
-    // / « personnes présentes » envoyait les 3-7 champs à chaque save.
-    final existingRows = await db.query(
-      'dossiers',
-      where: 'local_id = ?',
-      whereArgs: [dossierLocalId],
-      limit: 1,
-    );
-    final changedFields = _diffAgainstRow(
-      existingRows.isEmpty ? null : existingRows.first,
-      fields,
-    );
+    // L'UPDATE local et l'opération de synchronisation sont atomiques : un
+    // arrêt de l'app entre les deux ne peut pas laisser une modification
+    // visible uniquement sur cet appareil.
+    await db.transaction((txn) async {
+      final existingRows = await txn.query(
+        'dossiers',
+        where: 'local_id = ?',
+        whereArgs: [dossierLocalId],
+        limit: 1,
+      );
+      final changedFields = _diffAgainstRow(
+        existingRows.isEmpty ? null : existingRows.first,
+        fields,
+      );
+      if (changedFields.isEmpty) return;
 
-    if (changedFields.isEmpty) {
-      return; // rien à pousser, no-op
-    }
+      final apiUpdates = _mapDossierFieldsToApi(changedFields);
+      if (apiUpdates.isEmpty) return;
 
-    final localFields = Map<String, dynamic>.from(changedFields);
-    localFields['updated_at'] = now;
-    localFields['sync_state'] = SyncState.pendingSync.name;
-    await db.update(
-      'dossiers',
-      localFields,
-      where: 'local_id = ?',
-      whereArgs: [dossierLocalId],
-    );
-
-    final apiUpdates = _mapDossierFieldsToApi(changedFields);
-    if (apiUpdates.isEmpty) return;
-    await _enqueueEntityUpdate(
-      db,
-      entityType: 'dossier',
-      entityLocalId: dossierLocalId,
-      payloadKey: 'dossierId',
-      updates: apiUpdates,
-      now: now,
-    );
-    SyncEngine().notify();
+      final localFields = Map<String, dynamic>.from(changedFields)
+        ..['updated_at'] = now
+        ..['sync_state'] = SyncState.pendingSync.name;
+      await txn.update(
+        'dossiers',
+        localFields,
+        where: 'local_id = ?',
+        whereArgs: [dossierLocalId],
+      );
+      await _enqueueEntityUpdate(
+        txn,
+        entityType: 'dossier',
+        entityLocalId: dossierLocalId,
+        payloadKey: 'dossierId',
+        updates: apiUpdates,
+        now: now,
+      );
+      enqueued = true;
+    });
+    if (enqueued) SyncEngine().notify();
   }
 
   static Map<String, dynamic> _mapDossierFieldsToApi(
@@ -1593,6 +1586,7 @@ class DossierRepository {
       'nature_accompagnement': 'natureAccompagnement',
       'envoi_rapport': 'envoiRapport',
       'personnes_presentes_visite': 'personnesPresentesVisite',
+      'beneficiary_prepared': 'beneficiaryPrepared',
       'ergo_id': 'ergoId',
       'visit_date': 'visitDate',
       'status': 'status',

@@ -127,7 +127,7 @@ export const FIELD_SETS = {
   ],
   dossiers: [
     'uuid_source', 'patient_id', 'beneficiaires_id', 'status', 'ergo_id', 'visit_date', 'compte_anah',
-    'nature_accompagnement', 'envoi_rapport', 'personnes_presentes_visite', 'created_at', 'CreatedAt',
+    'nature_accompagnement', 'envoi_rapport', 'personnes_presentes_visite', 'beneficiaire_prepare', 'created_at', 'CreatedAt',
   ],
   logements: [
     'uuid_source', 'beneficiaire_id', 'beneficiaires_id', 'type_de_logement', 'annee_construction', 'annee_habitation',
@@ -1767,6 +1767,7 @@ export const createVirtualDossier = (beneficiaryRecord, appBeneficiaryId, housin
   natureAccompagnement: stringValue(field(dossierRecord, 'nature_accompagnement')),
   envoiRapport: stringValue(field(dossierRecord, 'envoi_rapport')),
   personnesPresentesVisite: stringValue(field(dossierRecord, 'personnes_presentes_visite') || field(infoRecord, 'personnes_presentes')),
+  beneficiaryPrepared: toBool(field(dossierRecord, 'beneficiaire_prepare')),
   autonomyNotes: '',
   plans: {
     PF1: { id: 'PF1', works: [], grants: [] },
@@ -1789,6 +1790,7 @@ export const createDossier = (beneficiaryRecord, appBeneficiaryId, dossierRecord
   natureAccompagnement: stringValue(field(dossierRecord, 'nature_accompagnement')),
   envoiRapport: stringValue(field(dossierRecord, 'envoi_rapport')),
   personnesPresentesVisite: stringValue(field(dossierRecord, 'personnes_presentes_visite') || field(infoRecord, 'personnes_presentes')),
+  beneficiaryPrepared: toBool(field(dossierRecord, 'beneficiaire_prepare')),
   autonomyNotes: '',
   plans: {
     PF1: { id: 'PF1', works: [], grants: [] },

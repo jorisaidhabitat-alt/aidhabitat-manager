@@ -1184,7 +1184,8 @@ class Dossier {
   /// dossier (demande utilisateur 2026-05-05). Quand `true`, l'UI
   /// bascule le bandeau bénéficiaire en violet foncé et la liste
   /// « Mes dossiers » entoure l'avatar de vert (vs jaune par défaut).
-  /// Local-only en v1 — non synchronisé NocoDB.
+  /// Synchronisé avec NocoDB pour conserver la même couleur sur iPad, Mac
+  /// et Web après un travail hors ligne.
   final bool beneficiaryPrepared;
 
   Dossier({

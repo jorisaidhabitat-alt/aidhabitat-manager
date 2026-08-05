@@ -58,9 +58,51 @@ void main() {
     expect(autonomy['occupants'][0]['attention'][0]['checked'], isTrue);
     expect(row['sync_state'], 'pendingSync');
   });
+
+  test(
+    'le statut préparé est partagé sans écraser une mutation locale',
+    () async {
+      await repository.mergeRemoteDossierPayloads([
+        _remoteDossier(
+          autonomy: _autonomy(firstAttention: false),
+          beneficiaryPrepared: true,
+        ),
+      ]);
+
+      var dossier = (await db.query('dossiers')).single;
+      expect(dossier['beneficiary_prepared'], 1);
+
+      await repository.setBeneficiaryPrepared(
+        dossierLocalId: 'dossier-prime',
+        prepared: false,
+      );
+      dossier = (await db.query('dossiers')).single;
+      expect(dossier['beneficiary_prepared'], 0);
+      expect(dossier['sync_state'], 'pendingSync');
+
+      final operations = await db.query(
+        'sync_operations',
+        where: 'entity_type = ? AND entity_local_id = ?',
+        whereArgs: const ['dossier', 'dossier-prime'],
+      );
+      expect(operations, hasLength(1));
+
+      await repository.mergeRemoteDossierPayloads([
+        _remoteDossier(
+          autonomy: _autonomy(firstAttention: false),
+          beneficiaryPrepared: true,
+        ),
+      ]);
+      dossier = (await db.query('dossiers')).single;
+      expect(dossier['beneficiary_prepared'], 0);
+    },
+  );
 }
 
-Map<String, dynamic> _remoteDossier({required Map<String, dynamic> autonomy}) {
+Map<String, dynamic> _remoteDossier({
+  required Map<String, dynamic> autonomy,
+  bool? beneficiaryPrepared,
+}) {
   return {
     'id': 'dossier-prime',
     'status': 'À visiter',
@@ -77,6 +119,7 @@ Map<String, dynamic> _remoteDossier({required Map<String, dynamic> autonomy}) {
     'housing': <String, dynamic>{},
     'medicalContext': <String, dynamic>{},
     'autonomy': autonomy,
+    if (beneficiaryPrepared != null) 'beneficiaryPrepared': beneficiaryPrepared,
   };
 }
 
