@@ -3072,18 +3072,92 @@ class DossierRepository {
   Future<bool> refreshDiagnosticSanitaireFromRemote(String dossierId) async {
     final NocodbApiClient api = NocodbApiClient();
     final remote = await api.fetchDiagnosticSanitairePayload(dossierId);
-    if (remote == null) return false;
+    return mergeRemoteDiagnosticSanitairePayload(dossierId, remote);
+  }
 
+  Future<bool> refreshMesuresFromRemote(String dossierId) async {
+    final NocodbApiClient api = NocodbApiClient();
+    final remote = await api.fetchMesuresPayload(dossierId);
+    return mergeRemoteMesuresPayload(dossierId, remote);
+  }
+
+  Future<bool> refreshObservationsFromRemote(String dossierId) async {
+    final NocodbApiClient api = NocodbApiClient();
+    final remote = await api.fetchObservationsPayload(dossierId);
+    return mergeRemoteObservationsPayload(dossierId, remote);
+  }
+
+  /// Central guard used by every dossier child table.
+  ///
+  /// A pull must never replace an offline edit, nor a write that has just
+  /// completed while NocoDB's read replica may still expose the old value.
+  Future<bool> _canMergeRemoteChild({
+    required DatabaseExecutor db,
+    required String table,
+    required String entityType,
+    required String dossierId,
+    bool allowPendingWithoutOperation = false,
+  }) async {
+    final existing = await db.query(
+      table,
+      columns: const ['sync_state'],
+      where: 'dossier_local_id = ?',
+      whereArgs: [dossierId],
+      limit: 1,
+    );
+
+    final cutoff = DateTime.now()
+        .subtract(const Duration(seconds: 30))
+        .toIso8601String();
+    final activeOrRecentOperations = await db.rawQuery(
+      '''
+      SELECT 1 FROM sync_operations
+      WHERE entity_type = ?
+        AND entity_local_id = ?
+        AND (
+          status IN ('pending', 'running', 'failed')
+          OR (status = 'completed' AND updated_at > ?)
+        )
+      LIMIT 1
+      ''',
+      [entityType, dossierId, cutoff],
+    );
+    if (activeOrRecentOperations.isNotEmpty) return false;
+
+    if (existing.isEmpty) return true;
+    final state = existing.first['sync_state'] as String?;
+    return state == null ||
+        state == SyncState.synced.name ||
+        (allowPendingWithoutOperation && state == SyncState.pendingSync.name);
+  }
+
+  Future<bool> mergeRemoteDiagnosticSanitairePayload(
+    String dossierId,
+    Map<String, dynamic>? remote,
+  ) async {
     final db = await _database.database;
+    final canMerge = await _canMergeRemoteChild(
+      db: db,
+      table: 'diagnostic_sanitaires',
+      entityType: 'diagnostic_sanitaires',
+      dossierId: dossierId,
+    );
+    if (!canMerge) return false;
+
     final existing = await db.query(
       'diagnostic_sanitaires',
       where: 'dossier_local_id = ?',
       whereArgs: [dossierId],
       limit: 1,
     );
-    if (existing.isNotEmpty &&
-        existing.first['sync_state'] == SyncState.pendingSync.name) {
-      return false;
+    if (remote == null) {
+      if (existing.isEmpty) return false;
+      await db.delete(
+        'diagnostic_sanitaires',
+        where: 'dossier_local_id = ?',
+        whereArgs: [dossierId],
+      );
+      return true;
     }
 
     final sdb = (remote['sdbInstances'] as List?) ?? const [];
@@ -3110,24 +3184,142 @@ class DossierRepository {
     return true;
   }
 
+  Future<bool> mergeRemoteMesuresPayload(
+    String dossierId,
+    Map<String, dynamic>? remote,
+  ) async {
+    final db = await _database.database;
+    final canMerge = await _canMergeRemoteChild(
+      db: db,
+      table: 'mesures_anthropometriques',
+      entityType: 'mesures_anthropometriques',
+      dossierId: dossierId,
+    );
+    if (!canMerge) return false;
+
+    final existing = await db.query(
+      'mesures_anthropometriques',
+      where: 'dossier_local_id = ?',
+      whereArgs: [dossierId],
+      limit: 1,
+    );
+    if (remote == null) {
+      if (existing.isEmpty) return false;
+      await db.delete(
+        'mesures_anthropometriques',
+        where: 'dossier_local_id = ?',
+        whereArgs: [dossierId],
+      );
+      return true;
+    }
+
+    final data = <String, dynamic>{
+      'dossier_local_id': dossierId,
+      'debout_hauteur_coude': remote['deboutHauteurCoude'],
+      'assis_hauteur_assise': remote['assisHauteurAssise'],
+      'assis_profondeur_genoux': remote['assisProfondeurGenoux'],
+      'assis_hauteur_coudes': remote['assisHauteurCoudes'],
+      'observations': remote['observations']?.toString() ?? '',
+      'updated_at': DateTime.now().toIso8601String(),
+      'sync_state': SyncState.synced.name,
+    };
+    if (existing.isEmpty) {
+      data['local_id'] = 'mes_remote_$dossierId';
+      await db.insert('mesures_anthropometriques', data);
+    } else {
+      await db.update(
+        'mesures_anthropometriques',
+        data,
+        where: 'dossier_local_id = ?',
+        whereArgs: [dossierId],
+      );
+    }
+    return true;
+  }
+
+  Future<bool> mergeRemoteObservationsPayload(
+    String dossierId,
+    Map<String, dynamic>? remote,
+  ) async {
+    final db = await _database.database;
+    final canMerge = await _canMergeRemoteChild(
+      db: db,
+      table: 'observations_synthese',
+      entityType: 'observations_synthese',
+      dossierId: dossierId,
+    );
+    if (!canMerge) return false;
+
+    final existing = await db.query(
+      'observations_synthese',
+      where: 'dossier_local_id = ?',
+      whereArgs: [dossierId],
+      limit: 1,
+    );
+    if (remote == null) {
+      if (existing.isEmpty) return false;
+      await db.delete(
+        'observations_synthese',
+        where: 'dossier_local_id = ?',
+        whereArgs: [dossierId],
+      );
+      return true;
+    }
+
+    final data = <String, dynamic>{
+      'dossier_local_id': dossierId,
+      'observation_equipements':
+          remote['observationEquipements']?.toString() ?? '',
+      'projet_souhait_usage': remote['projetSouhaitUsage']?.toString() ?? '',
+      'resume_preconisations': remote['resumePreconisations']?.toString() ?? '',
+      'updated_at': DateTime.now().toIso8601String(),
+      'sync_state': SyncState.synced.name,
+    };
+    if (existing.isEmpty) {
+      data['local_id'] = 'obs_remote_$dossierId';
+      await db.insert('observations_synthese', data);
+    } else {
+      await db.update(
+        'observations_synthese',
+        data,
+        where: 'dossier_local_id = ?',
+        whereArgs: [dossierId],
+      );
+    }
+    return true;
+  }
+
   /// Pulls the remote visit recommendations for [dossierId] and merges
   /// them into SQLite WITHOUT enqueuing a sync operation. Skips if the
   /// local row is in `pendingSync` (uncommitted local edits).
   Future<bool> refreshVisitRecommendationsFromRemote(String dossierId) async {
     final NocodbApiClient api = NocodbApiClient();
     final remoteItems = await api.fetchVisitRecommendationsPayload(dossierId);
+    return mergeRemoteVisitRecommendationsPayload(dossierId, remoteItems);
+  }
 
+  Future<bool> mergeRemoteVisitRecommendationsPayload(
+    String dossierId,
+    List<Map<String, dynamic>> remoteItems,
+  ) async {
     final db = await _database.database;
+    final canMerge = await _canMergeRemoteChild(
+      db: db,
+      table: 'visit_recommendations',
+      entityType: 'visit_recommendations',
+      dossierId: dossierId,
+      // A draft without wikiItemId intentionally has no sync operation.
+      // It can coexist with the remote list and must not freeze the pull.
+      allowPendingWithoutOperation: true,
+    );
+    if (!canMerge) return false;
+
     final existing = await db.query(
       'visit_recommendations',
       where: 'dossier_local_id = ?',
       whereArgs: [dossierId],
       limit: 1,
     );
-    if (existing.isNotEmpty &&
-        existing.first['sync_state'] == SyncState.pendingSync.name) {
-      return false;
-    }
 
     // MERGE remote + drafts locaux (items sans wikiItemId, non pushés car
     // le serveur les refuse). Sans ce merge, un draft en cours de saisie

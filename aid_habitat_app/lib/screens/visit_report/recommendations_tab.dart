@@ -23,12 +23,14 @@ class RecommendationsTab extends StatefulWidget {
   final Dossier dossier;
   final DossierRepository repository;
   final RecommendationsTabController? controller;
+  final int externalRefreshToken;
 
   const RecommendationsTab({
     super.key,
     required this.dossier,
     required this.repository,
     this.controller,
+    this.externalRefreshToken = 0,
   });
 
   @override
@@ -75,6 +77,7 @@ class _RecommendationsTabState extends State<RecommendationsTab>
   Timer? _saveDebounce;
   bool _hasPendingSave = false;
   int _saveGeneration = 0;
+  int _loadGeneration = 0;
   Future<void>? _saveInFlight;
   final WikiRepository _wikiRepo = WikiRepository();
   String? _activeRecommendationDragId;
@@ -110,6 +113,10 @@ class _RecommendationsTabState extends State<RecommendationsTab>
       oldWidget.controller?._detach(_flushPendingSave);
       widget.controller?._attach(_flushPendingSave);
     }
+    if (oldWidget.dossier.id != widget.dossier.id ||
+        oldWidget.externalRefreshToken != widget.externalRefreshToken) {
+      _load();
+    }
   }
 
   @override
@@ -136,18 +143,10 @@ class _RecommendationsTabState extends State<RecommendationsTab>
   // login.
 
   Future<void> _load() async {
-    // PURE LOCAL : on affiche ce qui est en SQLite, point. Les éditions
-    // locales sont la source de vérité. Le push vers NocoDB continue via
-    // le SyncEngine (save = write SQLite + enqueue sync_op + notify),
-    // mais aucun pull remote ne peut plus écraser l'état local.
-    //
-    // Pourquoi pas de refresh remote ici : le mapping remote→local est
-    // fragile (id serveur ≠ id local, customTitle en cours d'édition
-    // non encore pushé, etc.) et la moindre race condition faisait
-    // disparaître des items ou réinitialiser les titres à chaque tab
-    // switch. Le compromis : si un second device modifie la liste
-    // pendant la session, on ne le verra qu'après un redémarrage de
-    // l'app (SyncEngine pull pull côté init).
+    final generation = ++_loadGeneration;
+    // Lecture locale immédiate. Le parent effectue en parallèle un pull
+    // distant protégé ; `externalRefreshToken` relance ensuite cette lecture
+    // sans jamais bloquer l'ouverture de l'onglet.
     final localItems = await widget.repository.fetchVisitRecommendations(
       widget.dossier.id,
     );
@@ -159,7 +158,7 @@ class _RecommendationsTabState extends State<RecommendationsTab>
         .where(_hasSelectedLibraryItem)
         .toList(growable: false);
     final removedEmptyItems = visibleItems.length != hydratedItems.length;
-    if (!mounted) return;
+    if (!mounted || generation != _loadGeneration) return;
     setState(() {
       _items = visibleItems;
       _wikiItems = localWiki;

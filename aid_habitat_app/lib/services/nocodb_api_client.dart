@@ -514,6 +514,49 @@ class NocodbApiClient {
     }
   }
 
+  /// GET /api/mesures/:dossierId — returns the persisted structured
+  /// anthropometric measurements, or null when the dossier has no row.
+  Future<Map<String, dynamic>?> fetchMesuresPayload(String dossierId) async {
+    if (!AppConfig.hasRemoteConfig) return null;
+
+    final response = await _client
+        .get(Uri.parse('$_baseUrl/api/mesures/$dossierId'), headers: _headers)
+        .timeout(_defaultTimeout);
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('Remote mesures fetch failed (${response.statusCode})');
+    }
+    final body = response.body.trim();
+    if (body.isEmpty || body == 'null') return null;
+    final decoded = jsonDecode(body);
+    return decoded is Map<String, dynamic> ? decoded : null;
+  }
+
+  /// GET /api/observations/:dossierId — returns the persisted report
+  /// synthesis fields, or null when the dossier has no row.
+  Future<Map<String, dynamic>?> fetchObservationsPayload(
+    String dossierId,
+  ) async {
+    if (!AppConfig.hasRemoteConfig) return null;
+
+    final response = await _client
+        .get(
+          Uri.parse('$_baseUrl/api/observations/$dossierId'),
+          headers: _headers,
+        )
+        .timeout(_defaultTimeout);
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(
+        'Remote observations fetch failed (${response.statusCode})',
+      );
+    }
+    final body = response.body.trim();
+    if (body.isEmpty || body == 'null') return null;
+    final decoded = jsonDecode(body);
+    return decoded is Map<String, dynamic> ? decoded : null;
+  }
+
   /// GET /api/diagnostic-sanitaires/:dossierId — returns the latest
   /// persisted SDB + WC instances for the dossier, or null if no record
   /// has ever been saved server-side.

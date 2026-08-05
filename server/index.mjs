@@ -8229,7 +8229,8 @@ app.get('/api/diagnostic-sanitaires/:dossierId', requireAuth, async (req, res, n
       return;
     }
     const records = await queryAll(TABLES.diagnosticSanitaires, { fields: FIELD_SETS.diagnosticSanitaires });
-    const record = latestByFieldValue(records, 'dossier_id', req.params.dossierId);
+    const canonicalDossierId = field(dossierRecord, 'uuid_source') || req.params.dossierId;
+    const record = latestByFieldValue(records, 'dossier_id', canonicalDossierId);
     res.json(record ? {
       id: field(record, 'uuid_source') || String(record.id),
       dossierId: field(record, 'dossier_id'),
@@ -8388,7 +8389,8 @@ app.get('/api/mesures/:dossierId', requireAuth, async (req, res, next) => {
       return;
     }
     const records = await queryAll(TABLES.mesuresAnthropometriques, { fields: FIELD_SETS.mesuresAnthropometriques });
-    const record = latestByFieldValue(records, 'dossier_id', req.params.dossierId);
+    const canonicalDossierId = field(dossierRecord, 'uuid_source') || req.params.dossierId;
+    const record = latestByFieldValue(records, 'dossier_id', canonicalDossierId);
     res.json(record ? {
       id: field(record, 'uuid_source') || String(record.id),
       dossierId: field(record, 'dossier_id'),
@@ -8446,7 +8448,8 @@ app.get('/api/observations/:dossierId', requireAuth, async (req, res, next) => {
       return;
     }
     const records = await queryAll(TABLES.observations, { fields: FIELD_SETS.observations });
-    const record = latestByFieldValue(records, 'dossier_id', req.params.dossierId);
+    const canonicalDossierId = field(dossierRecord, 'uuid_source') || req.params.dossierId;
+    const record = latestByFieldValue(records, 'dossier_id', canonicalDossierId);
     res.json(record ? {
       id: field(record, 'uuid_source') || String(record.id),
       dossierId: field(record, 'dossier_id'),

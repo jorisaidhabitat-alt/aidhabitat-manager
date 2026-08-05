@@ -178,6 +178,10 @@ class _DossierScreenState extends State<DossierScreen> {
         dossierId: widget.dossier.id,
       );
       if (existingJson != null) return;
+      // Un autre appareil peut avoir renseigné l'observation après le
+      // dernier workspace pull. Rafraîchit silencieusement la table dédiée
+      // avant de décider si la note rapide doit être initialisée.
+      await DataService().refreshObservationsFromRemote(widget.dossier.id);
       // Récupère le commentaire projet depuis les observations du dossier.
       final obs = await _repository.fetchObservations(widget.dossier.id);
       final comment = (obs?.projetSouhaitUsage ?? '').trim();

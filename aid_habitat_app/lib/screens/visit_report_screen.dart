@@ -370,6 +370,8 @@ class _VisitReportScreenState extends State<VisitReportScreen>
     // SQLite (déjà à jour grâce au merge bulk).
     // ignore: discarded_futures
     _kickInitialNotesBulkPull();
+    // ignore: discarded_futures
+    _kickInitialDossierDetailPull();
 
     // Refactor 2026-05-12 : suppression de `enterActiveContext` (le mode
     // pull ultra-actif n'existe plus). L'écran VAD reflète l'état au
@@ -757,6 +759,7 @@ class _VisitReportScreenState extends State<VisitReportScreen>
   /// la note. Le mécanisme `externalRefreshToken` existe déjà — on
   /// l'utilise au lieu d'inventer un nouveau canal.
   int _notesBulkPullToken = 0;
+  int _dossierDetailPullToken = 0;
 
   /// Pull bulk des notes — fire-and-forget depuis `initState`. Quand
   /// la requête se termine, on incrémente [_notesBulkPullToken] →
@@ -772,6 +775,18 @@ class _VisitReportScreenState extends State<VisitReportScreen>
         _notesBulkPullToken += 1;
       });
     }
+  }
+
+  /// Reconciles all structured visit tables in the background. The screen
+  /// renders SQLite first, then rebuilds once the safe remote merges finish.
+  Future<void> _kickInitialDossierDetailPull() async {
+    final changed = await _dataService.refreshDossierDetailFromRemote(
+      _dossier.id,
+    );
+    if (!mounted || !changed) return;
+    await _refreshDossier();
+    if (!mounted) return;
+    setState(() => _dossierDetailPullToken += 1);
   }
 
   /// Re-fetches the dossier from the local database and updates state.
@@ -2833,6 +2848,7 @@ class _VisitReportScreenState extends State<VisitReportScreen>
             dossier: _dossier,
             repository: _repository,
             controller: _recommendationsController,
+            externalRefreshToken: _dossierDetailPullToken,
           ),
         ),
       ],

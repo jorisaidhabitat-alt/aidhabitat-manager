@@ -956,6 +956,14 @@ class DataService {
         fetchPrincipalRetirementFundNames(),
       ]);
 
+      // Précharge aussi les tables structurées qui ne font pas partie du
+      // payload principal `/api/dossiers`. Sans ce passage, un nouvel
+      // appareil ne récupérait SDB/WC, mesures, observations et
+      // préconisations qu'après avoir ouvert chaque relevé individuellement.
+      // Le pool borné évite de saturer l'API lorsqu'un admin voit tous les
+      // dossiers.
+      await _preloadWorkspaceDossierChildren(rawPayloads);
+
       // Précharge toutes les notes des dossiers accessibles. Sans ce
       // warmup, seules les notes déjà ouvertes sur cet iPad existaient
       // en SQLite : après une reconnexion puis un passage hors ligne,
@@ -985,6 +993,21 @@ class DataService {
     }
   }
 
+  /// Refreshes the editable dossier records without warming every global
+  /// reference and every patient's notes. Used when a visit is opened so a
+  /// second device sees the latest beneficiary, housing and context values
+  /// immediately, without delaying the initial local render.
+  Future<bool> refreshDossierRecordsFromRemote() async {
+    try {
+      final rawPayloads = await _nocodbApiClient.fetchDossierPayloads();
+      if (rawPayloads.isEmpty) return false;
+      await _dossierRepository.mergeRemoteDossierPayloads(rawPayloads);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<void> _preloadWorkspaceNotePages(
     List<Map<String, dynamic>> rawPayloads,
   ) async {
@@ -1008,6 +1031,26 @@ class DataService {
     }
   }
 
+  Future<void> _preloadWorkspaceDossierChildren(
+    List<Map<String, dynamic>> rawPayloads,
+  ) async {
+    final dossierIds = rawPayloads
+        .map((raw) => raw['id']?.toString().trim() ?? '')
+        .where((id) => id.isNotEmpty)
+        .toSet()
+        .toList(growable: false);
+
+    // Chaque dossier déclenche quatre petites lectures. Deux dossiers à la
+    // fois gardent une charge réseau prévisible sur NocoDB et EasyPanel.
+    const concurrency = 2;
+    for (var start = 0; start < dossierIds.length; start += concurrency) {
+      final end = (start + concurrency).clamp(0, dossierIds.length);
+      await Future.wait(
+        dossierIds.sublist(start, end).map(refreshDossierChildTablesFromRemote),
+      );
+    }
+  }
+
   /// Pulls diagnostic sanitaires for [dossierId] from the server and
   /// merges into SQLite. No-op + returns false when offline or when the
   /// local row has pending unsynced edits. Errors swallowed.
@@ -1016,6 +1059,22 @@ class DataService {
       return await _dossierRepository.refreshDiagnosticSanitaireFromRemote(
         dossierId,
       );
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<bool> refreshMesuresFromRemote(String dossierId) async {
+    try {
+      return await _dossierRepository.refreshMesuresFromRemote(dossierId);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<bool> refreshObservationsFromRemote(String dossierId) async {
+    try {
+      return await _dossierRepository.refreshObservationsFromRemote(dossierId);
     } catch (_) {
       return false;
     }
@@ -1031,6 +1090,28 @@ class DataService {
     } catch (_) {
       return false;
     }
+  }
+
+  Future<bool> refreshDossierChildTablesFromRemote(String dossierId) async {
+    final results = await Future.wait([
+      refreshDiagnosticSanitaireFromRemote(dossierId),
+      refreshMesuresFromRemote(dossierId),
+      refreshObservationsFromRemote(dossierId),
+      refreshVisitRecommendationsFromRemote(dossierId),
+    ]);
+    return results.any((changed) => changed);
+  }
+
+  /// Pulls every NocoDB-backed section used while editing one visit. Each
+  /// operation is isolated: one unavailable child table never prevents the
+  /// other sections from refreshing, and repository guards preserve offline
+  /// edits plus recently completed writes.
+  Future<bool> refreshDossierDetailFromRemote(String dossierId) async {
+    final results = await Future.wait([
+      refreshDossierRecordsFromRemote(),
+      refreshDossierChildTablesFromRemote(dossierId),
+    ]);
+    return results.any((changed) => changed);
   }
 
   Future<SyncRunResult> runSync() async {
