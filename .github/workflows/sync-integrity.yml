@@ -1,0 +1,79 @@
+name: Sync Integrity
+
+on:
+  pull_request:
+    paths:
+      - 'aid_habitat_app/lib/**'
+      - 'aid_habitat_app/test/**'
+      - 'components/**'
+      - 'server/**'
+      - 'shared/**'
+      - 'tools/check-sync-contracts.mjs'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/sync-integrity.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'aid_habitat_app/lib/**'
+      - 'aid_habitat_app/test/**'
+      - 'components/**'
+      - 'server/**'
+      - 'shared/**'
+      - 'tools/check-sync-contracts.mjs'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/sync-integrity.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sync-integrity-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contracts:
+    name: Offline API NocoDB Web contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Verify synchronization contracts
+        run: npm run test:sync-contract
+
+      - name: Verify critical flows
+        run: npm run check:critical
+
+      - name: Build Web interface
+        run: npm run build
+
+  flutter-sync:
+    name: iPad offline queue and merge protection
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.38.4"
+          channel: stable
+          cache: true
+
+      - name: Verify critical synchronization scenarios
+        run: bash aid_habitat_app/tool/test_sync_critical.sh

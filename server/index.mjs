@@ -28,6 +28,11 @@ import {
   selectCanonicalNotePages,
 } from './notePageScope.mjs';
 import { LOCAL_SESSION_TOKEN_PREFIX } from '../shared/localAuthProfiles.js';
+import {
+  AUTONOMY_ITEMS,
+  autonomyChecklistToMap,
+  normalizeAutonomyChecklist,
+} from '../shared/autonomyContract.js';
 // 2026-05-06 — Vercel Blob entièrement éliminé. Seuls les helpers
 // chunks (in-memory désormais) restent utilisés depuis storage.mjs.
 // putObject/statObject/getJson/putJson ne sont plus appelés.
@@ -41,6 +46,11 @@ import {
   generateVisitReport,
   buildReportFileName,
 } from './reports/generateVisitReport.mjs';
+import {
+  createConcurrencyGate,
+  executeSyncBatch,
+  validateSyncBatchPayload,
+} from './syncBatch.mjs';
 
 dotenv.config({ path: '.env.local' });
 dotenv.config();
@@ -77,22 +87,12 @@ const VISIT_RECOMMENDATIONS_STORE_URL = dataFileUrl('visit-recommendations.json'
 const VISIT_RECOMMENDATIONS_TABLE_NAME = process.env.NOCODB_VISIT_RECOMMENDATIONS_TABLE_NAME || 'mobile_visit_recommendations';
 const WIKI_LIBRARY_STORE_URL = dataFileUrl('wikiLibraryStatic.json');
 const BUNDLED_WIKI_LIBRARY_PATH = path.resolve(SERVER_DIR_PATH, '../data/wikiLibraryStatic.json');
-// 2026-05-07 : 30s → 10s pour propagation cross-device sub-3s de la
-// photo profil. Le cache reste utile pour absorber la rafale d'appels
-// auth liés au polling sync (un device call /api/auth/local-state
-// toutes les 2-3 s).
-//
-// Passé de 10s à 60s le 2026-05-11 pour réduire la pression CPU/memory
-// Vercel Fluid sur Hobby (96% quota Fluid Provisioned Memory atteint
-// après une journée intense). À 10s : ~360 fetches NocoDB/heure/instance
-// pour rafraîchir le registre des ergos. À 60s : ~60/heure → ÷6 sur le
-// coût compute.
-//
-// Trade-off : un changement de `mot_de_passe` côté NocoDB UI met
-// jusqu'à 60s (au lieu de 10s) pour invalider les anciens tokens via
-// le bump `sessionVersion`. Acceptable pour ce cas d'usage.
-const AUTH_CACHE_TTL_MS = 60_000;
+// Cache court partagé par les endpoints authentifiés et les sous-opérations
+// batchées. Il évite une lecture NocoDB par appel tout en propageant un
+// changement de mot de passe ou une révocation en 10 secondes maximum.
+const AUTH_CACHE_TTL_MS = 10_000;
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 7;
+const REFRESH_SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 90;
 const ANAH_STATUS_TTL_MS = 60_000;
 const ANAH_PUBLIC_URL = 'https://www.anah.gouv.fr/';
 const ANAH_REGISTRATION_URL = 'https://monprojet.anah.gouv.fr/';
@@ -302,7 +302,7 @@ const requireAuthForUploads = async (req, res, next) => {
     if (!encodedPayload || !signature) {
       return res.status(401).json({ error: 'unauthorized' });
     }
-    const { store, members } = await loadMemberRegistryForAuth();
+    const { store, members } = await loadMemberRegistry();
     const expected = crypto.createHmac('sha256', store.secret)
       .update(encodedPayload).digest('base64url');
     if (!timingSafeStringEqual(signature, expected)) {
@@ -310,6 +310,11 @@ const requireAuthForUploads = async (req, res, next) => {
     }
     const payload = decodeBase64Url(encodedPayload);
     if (!payload?.email || Number(payload.exp) < Date.now()) {
+      return res.status(401).json({ error: 'unauthorized' });
+    }
+    // Un refresh token ne doit jamais donner accès aux fichiers privés.
+    const tokenType = stringValue(payload.typ) || 'access';
+    if (tokenType !== 'access') {
       return res.status(401).json({ error: 'unauthorized' });
     }
     const email = normalizeEmail(payload.email);
@@ -440,25 +445,6 @@ const FIELD_SETS = {
   caissesRetraiteComplementaires: ['nom', 'numero_telephone_contact', 'aide_complementaire', 'a_une_aide_specifique', 'metadata_json'],
   wikiTags: ['uuid_source', 'tags'],
   wiki: ['uuid_source', 'titre', 'photos', 'photo_base64', 'contenu', 'wiki_tags_id', 'wiki_tags'],
-};
-
-const AUTONOMY_ITEMS = [
-  'Déplacements/transferts',
-  'Escaliers',
-  'Conduite automobile',
-  'Transports en commun',
-  'Toilette/habillage',
-  'Continence',
-  'Repas (y compris courses)',
-  'Tâches ménagères',
-  'Démarches admin',
-  'Cognition',
-  'Communication',
-];
-
-const canonicalAutonomyItemName = (value) => {
-  const name = stringValue(value).trim();
-  return name === 'Tâches ménagères.domestiques' ? 'Tâches ménagères' : name;
 };
 
 const VISIT_RECOMMENDATION_FIELDS = [
@@ -1115,21 +1101,12 @@ const parseChecklistDone = (contextRecord) => {
               weightKg: stringValue(entry?.medical?.weightKg),
             },
             autonomyDone: Boolean(entry?.autonomyDone),
-            autonomy: AUTONOMY_ITEMS.map((name, index) => ({
-              name,
-              checked: Boolean(entry?.autonomy?.[index]?.checked),
-            })),
+            autonomy: normalizeAutonomyChecklist(entry?.autonomy),
             // Pull du 3e état autonomie « ! » (cf. push dans
             // upsertContexte). Permet à Flutter de relire la coche
             // attention au prochain hydrate du dossier.
-            attention: AUTONOMY_ITEMS.map((name, index) => ({
-              name,
-              checked: Boolean(entry?.attention?.[index]?.checked),
-            })),
-            humanHelp: AUTONOMY_ITEMS.map((name, index) => ({
-              name,
-              checked: Boolean(entry?.humanHelp?.[index]?.checked),
-            })),
+            attention: normalizeAutonomyChecklist(entry?.attention),
+            humanHelp: normalizeAutonomyChecklist(entry?.humanHelp),
           }));
         const primary = normalizedOccupants[0];
         const checklist = primary?.autonomy || AUTONOMY_ITEMS.map((name) => ({ name, checked: false }));
@@ -3067,24 +3044,35 @@ const loadMemberRegistryForAuth = async () => {
   return loadMemberRegistry({ forceRefresh: true });
 };
 
-const signSessionToken = async (email) => {
-  const { store } = await loadMemberRegistryForAuth();
+const signTypedSessionToken = async (
+  email,
+  { type = 'access', ttlMs = SESSION_TTL_MS } = {},
+) => {
+  // Le login vient de rafraîchir le registre. Réutiliser ce cache évite
+  // deux lectures NocoDB supplémentaires lors de l'émission des jetons.
+  const { store } = await loadMemberRegistry();
   // Per-user `sessionVersion` + empreinte HMAC du mot de passe courant.
   // L'empreinte rend les changements de `mot_de_passe` durables à travers
   // les cold restarts : le checksum vient de NocoDB, pas seulement de la RAM.
   const sessionVersion = resolveCredentialSessionVersion(store.users[email], store.secret);
   const payload = {
     email,
-    exp: Date.now() + SESSION_TTL_MS,
+    exp: Date.now() + ttlMs,
     sv: sessionVersion,
+    typ: type,
   };
   const encodedPayload = encodeBase64Url(payload);
   const signature = crypto.createHmac('sha256', store.secret).update(encodedPayload).digest('base64url');
   return `${encodedPayload}.${signature}`;
 };
 
-const resolveSessionUser = async (req) => {
-  const token = getTokenFromRequest(req);
+const signSessionToken = (email) => signTypedSessionToken(email);
+const signRefreshToken = (email) => signTypedSessionToken(email, {
+  type: 'refresh',
+  ttlMs: REFRESH_SESSION_TTL_MS,
+});
+
+const resolveSignedSessionUser = async (token, { expectedType = 'access' } = {}) => {
   if (!token) return null;
 
   // SECURITY 2026-05-15 — Audit P0 #1 : on REJETTE les tokens
@@ -3100,12 +3088,18 @@ const resolveSessionUser = async (req) => {
   const [encodedPayload, signature] = token.split('.');
   if (!encodedPayload || !signature) return null;
 
-  const { store, members } = await loadMemberRegistryForAuth();
+  // Le cache court absorbe les rafales API produites au retour online.
+  const { store, members } = await loadMemberRegistry();
   const expectedSignature = crypto.createHmac('sha256', store.secret).update(encodedPayload).digest('base64url');
   if (!timingSafeStringEqual(signature, expectedSignature)) return null;
 
   const payload = decodeBase64Url(encodedPayload);
   if (!payload?.email || Number(payload.exp) < Date.now()) return null;
+  // Les anciens jetons sans `typ` restent valides comme jetons d'accès
+  // pendant leur durée de vie. Un jeton de renouvellement ne peut jamais
+  // être présenté directement à un endpoint métier.
+  const tokenType = stringValue(payload.typ) || 'access';
+  if (tokenType !== expectedType) return null;
 
   // Révocation per-user via `sessionVersion`. Si le bump a eu lieu
   // (changement mdp NocoDB ou révocation admin explicite), le token
@@ -3117,6 +3111,16 @@ const resolveSessionUser = async (req) => {
 
   return members.find((member) => member.email === email) || null;
 };
+
+const resolveSessionUser = async (req) => resolveSignedSessionUser(
+  getTokenFromRequest(req),
+  { expectedType: 'access' },
+);
+
+const resolveRefreshSessionUser = async (token) => resolveSignedSessionUser(
+  token,
+  { expectedType: 'refresh' },
+);
 
 const requireAuth = async (req, res, next) => {
   try {
@@ -3152,6 +3156,33 @@ const requireAdmin = async (req, res, next) => {
     next(error);
   }
 };
+
+// Deux lots au maximum sont traités simultanément sur le serveur. Chaque lot
+// reste séquentiel en interne, ce qui protège le VPS/NocoDB lors du retour en
+// ligne simultané de plusieurs iPad après une journée de visites.
+const runSyncBatchWithLimit = createConcurrencyGate(2);
+
+app.post('/api/sync/batch', requireAuth, async (req, res, next) => {
+  try {
+    const operations = validateSyncBatchPayload(req.body);
+    const sessionToken = String(req.headers['x-app-session'] || '').trim();
+    const origin = String(
+      process.env.SYNC_BATCH_INTERNAL_ORIGIN || `http://127.0.0.1:${port}`,
+    ).replace(/\/+$/, '');
+    const results = await runSyncBatchWithLimit(() =>
+      executeSyncBatch({ operations, origin, sessionToken }),
+    );
+
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({ success: true, results });
+  } catch (error) {
+    if (error instanceof TypeError) {
+      res.status(400).json({ success: false, error: error.message });
+      return;
+    }
+    next(error);
+  }
+});
 
 const getAdminAccessMembers = async () => {
   const { members, store } = await loadMemberRegistry({ forceRefresh: true });
@@ -3801,10 +3832,7 @@ const upsertContexte = async (
   const dossierRecord = options.dossierRecord || null;
   const beneficiaryRecordId = options.beneficiaryRecordId ?? null;
 
-  const checklistMap = new Map((autonomy?.checklist || []).map((item) => [
-    canonicalAutonomyItemName(item.name),
-    item.checked,
-  ]));
+  const checklistMap = autonomyChecklistToMap(autonomy?.checklist);
   const normalizedOccupants = Array.isArray(autonomy?.occupants)
     ? autonomy.occupants
       .filter((entry) => entry && typeof entry === 'object')
@@ -3817,10 +3845,7 @@ const upsertContexte = async (
           weightKg: stringValue(entry?.medical?.weightKg).trim(),
         },
         autonomyDone: Boolean(entry?.autonomyDone),
-        autonomy: AUTONOMY_ITEMS.map((name, index) => ({
-          name,
-          checked: Boolean(entry?.autonomy?.[index]?.checked),
-        })),
+        autonomy: normalizeAutonomyChecklist(entry?.autonomy),
         // 3e état autonomie « ! » (attention/vigilance) — ajouté
         // 2026-05-04 (audit sync) : auparavant ce champ était saisi
         // côté Flutter (`OccupantAutonomy.attention`) et envoyé dans
@@ -3828,14 +3853,8 @@ const upsertContexte = async (
         // vers NocoDB (puis relu vide au pull → effacement). Le 3e
         // état coexiste avec `autonomy` et `humanHelp` (cf. context_tab
         // qui les rend indépendants).
-        attention: AUTONOMY_ITEMS.map((name, index) => ({
-          name,
-          checked: Boolean(entry?.attention?.[index]?.checked),
-        })),
-        humanHelp: AUTONOMY_ITEMS.map((name, index) => ({
-          name,
-          checked: Boolean(entry?.humanHelp?.[index]?.checked),
-        })),
+        attention: normalizeAutonomyChecklist(entry?.attention),
+        humanHelp: normalizeAutonomyChecklist(entry?.humanHelp),
       }))
     : [];
   // Fix critique 2026-05-15 (audit P0) — PATCH partiel :
@@ -4226,13 +4245,38 @@ app.post('/api/auth/login', async (req, res, next) => {
 
     clearLoginFailures(req, email);
     const token = await signSessionToken(email);
+    const refreshToken = await signRefreshToken(email);
     res.json({
       success: true,
       error: null,
       data: {
         token,
+        refreshToken,
         user: member,
       },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/auth/refresh', async (req, res, next) => {
+  try {
+    const presentedToken = String(req.body?.refreshToken || '').trim();
+    const member = await resolveRefreshSessionUser(presentedToken);
+    if (!member) {
+      res.status(401).json({ success: false, error: 'Session de renouvellement invalide ou expirée' });
+      return;
+    }
+
+    // Rotation à chaque utilisation : le client remplace atomiquement ses
+    // deux jetons, sans conserver le mot de passe en mémoire ou sur disque.
+    const token = await signSessionToken(member.email);
+    const refreshToken = await signRefreshToken(member.email);
+    res.json({
+      success: true,
+      error: null,
+      data: { token, refreshToken },
     });
   } catch (error) {
     next(error);

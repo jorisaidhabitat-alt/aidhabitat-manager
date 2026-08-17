@@ -56,6 +56,16 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Verify synchronization contracts
+        run: npm run test:sync-contract
+
+      - name: Verify critical flows
+        run: npm run check:critical
 
       - name: Syntax check server
         run: |
@@ -114,8 +124,8 @@ jobs:
           EASYPANEL_WEBHOOK: ${{ secrets.EASYPANEL_API_WEBHOOK }}
         run: |
           if [ -z "$EASYPANEL_WEBHOOK" ]; then
-            echo "No EASYPANEL_API_WEBHOOK secret configured; image published only."
-            exit 0
+            echo "::error::Missing EASYPANEL_API_WEBHOOK; refusing to report an undeployed API as successful."
+            exit 1
           fi
           echo "Triggering Easypanel redeploy…"
           response=$(curl -sS -o /tmp/easypanel-resp -w "%{http_code}" \

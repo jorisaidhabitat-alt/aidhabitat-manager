@@ -10,6 +10,8 @@ import {
   normalizeEmail,
   generatePassword,
   signSessionToken,
+  signRefreshToken,
+  resolveRefreshSessionUser,
   loadMemberRegistryForAuth,
   loadMemberRegistry,
   readAuthStore,
@@ -61,13 +63,36 @@ router.post('/api/auth/login', async (req, res, next) => {
     }
 
     const token = await signSessionToken(email);
+    const refreshToken = await signRefreshToken(email);
     res.json({
       success: true,
       error: null,
       data: {
         token,
+        refreshToken,
         user: member,
       },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post('/api/auth/refresh', async (req, res, next) => {
+  try {
+    const member = await resolveRefreshSessionUser(
+      String(req.body?.refreshToken || '').trim(),
+    );
+    if (!member) {
+      res.status(401).json({ success: false, error: 'Session de renouvellement invalide ou expirée' });
+      return;
+    }
+    const token = await signSessionToken(member.email);
+    const refreshToken = await signRefreshToken(member.email);
+    res.json({
+      success: true,
+      error: null,
+      data: { token, refreshToken },
     });
   } catch (error) {
     next(error);

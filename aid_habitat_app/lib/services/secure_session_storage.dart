@@ -27,6 +27,11 @@ class SecureSessionStorage {
   /// Distinct de `user_local_id` (qui est public et reste dans SQLite).
   static const String _sessionTokenKey = 'aidhabitat.session_token';
 
+  /// Jeton long terme utilisé uniquement pour renouveler la session API.
+  /// Il n'est jamais envoyé aux endpoints métier et bénéficie des mêmes
+  /// garanties Keychain/Keystore que le jeton d'accès.
+  static const String _refreshTokenKey = 'aidhabitat.refresh_token';
+
   /// Clé sous laquelle on stocke la **master key SQLCipher** (32 bytes
   /// random en base64) qui chiffre toute la base SQLite locale sur
   /// iOS/macOS natif. Audit sécurité 2026-05-15 P0 #4 Layer 2 : la clé
@@ -84,6 +89,37 @@ class SecureSessionStorage {
     }
   }
 
+  Future<String?> readRefreshToken() async {
+    try {
+      final value = await _storage.read(key: _refreshTokenKey);
+      if (value == null || value.isEmpty) return null;
+      return value;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> writeRefreshToken(String? token) async {
+    if (token == null || token.isEmpty) {
+      await clearRefreshToken();
+      return;
+    }
+    try {
+      await _storage.write(key: _refreshTokenKey, value: token);
+    } catch (_) {
+      // Le jeton d'accès courant reste utilisable. Une reconnexion manuelle
+      // sera seulement nécessaire à sa prochaine expiration.
+    }
+  }
+
+  Future<void> clearRefreshToken() async {
+    try {
+      await _storage.delete(key: _refreshTokenKey);
+    } catch (_) {
+      // Best-effort, comme pour le jeton d'accès.
+    }
+  }
+
   /// Supprime le token (logout ou révocation).
   /// Ne touche PAS à la master key SQLCipher (cf. `clearMasterKey`) —
   /// signOut doit préserver le chiffrement de la base, sinon les
@@ -96,6 +132,7 @@ class SecureSessionStorage {
       // Silent — pareil que `write` : si la suppression échoue, le
       // token en RAM est de toute façon clearé par AppConfig.
     }
+    await clearRefreshToken();
   }
 
   // ---------------------------------------------------------------------------

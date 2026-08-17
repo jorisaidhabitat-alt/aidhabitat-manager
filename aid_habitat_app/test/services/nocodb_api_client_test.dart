@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -45,38 +46,42 @@ void main() {
       expect(updated, '2026-05-15T10:00:00Z');
     });
 
-    test('200 OK sans `updatedAt` → renvoie null (rétrocompat ancien deploy)',
-        () async {
-      final client = NocodbApiClient(
-        client: MockClient((_) async {
-          return http.Response('{"success":true,"data":{}}', 200);
-        }),
-      );
-      final updated = await client.updateDossier(
-        dossierId: 'dos-123',
-        updates: {'foo': 'bar'},
-      );
-      expect(updated, isNull);
-    });
-
-    test('409 Conflict → lève ConflictException (route vers markConflict)',
-        () async {
-      final client = NocodbApiClient(
-        client: MockClient((_) async {
-          return http.Response(
-            '{"success":false,"error":"stale","remoteData":{}}',
-            409,
-          );
-        }),
-      );
-      await expectLater(
-        () => client.updateDossier(
+    test(
+      '200 OK sans `updatedAt` → renvoie null (rétrocompat ancien deploy)',
+      () async {
+        final client = NocodbApiClient(
+          client: MockClient((_) async {
+            return http.Response('{"success":true,"data":{}}', 200);
+          }),
+        );
+        final updated = await client.updateDossier(
           dossierId: 'dos-123',
           updates: {'foo': 'bar'},
-        ),
-        throwsA(isA<ConflictException>()),
-      );
-    });
+        );
+        expect(updated, isNull);
+      },
+    );
+
+    test(
+      '409 Conflict → lève ConflictException (route vers markConflict)',
+      () async {
+        final client = NocodbApiClient(
+          client: MockClient((_) async {
+            return http.Response(
+              '{"success":false,"error":"stale","remoteData":{}}',
+              409,
+            );
+          }),
+        );
+        await expectLater(
+          () => client.updateDossier(
+            dossierId: 'dos-123',
+            updates: {'foo': 'bar'},
+          ),
+          throwsA(isA<ConflictException>()),
+        );
+      },
+    );
 
     test('500 → lève TransientRemoteException (retry silencieux, '
         'PAS de bandeau)', () async {
@@ -86,10 +91,8 @@ void main() {
         }),
       );
       await expectLater(
-        () => client.updateDossier(
-          dossierId: 'dos-123',
-          updates: {'foo': 'bar'},
-        ),
+        () =>
+            client.updateDossier(dossierId: 'dos-123', updates: {'foo': 'bar'}),
         throwsA(isA<TransientRemoteException>()),
       );
     });
@@ -156,21 +159,23 @@ void main() {
       }
     });
 
-    test('TimeoutException de la pile réseau → TransientRemoteException',
-        () async {
-      final client = NocodbApiClient(
-        client: MockClient((_) async {
-          throw TimeoutException('simulated');
-        }),
-      );
-      await expectLater(
-        () => client.updateDossier(
-          dossierId: 'dos-123',
-          updates: {'foo': 'bar'},
-        ),
-        throwsA(isA<TransientRemoteException>()),
-      );
-    });
+    test(
+      'TimeoutException de la pile réseau → TransientRemoteException',
+      () async {
+        final client = NocodbApiClient(
+          client: MockClient((_) async {
+            throw TimeoutException('simulated');
+          }),
+        );
+        await expectLater(
+          () => client.updateDossier(
+            dossierId: 'dos-123',
+            updates: {'foo': 'bar'},
+          ),
+          throwsA(isA<TransientRemoteException>()),
+        );
+      },
+    );
 
     test('SocketException → TransientRemoteException', () async {
       final client = NocodbApiClient(
@@ -179,10 +184,8 @@ void main() {
         }),
       );
       await expectLater(
-        () => client.updateDossier(
-          dossierId: 'dos-123',
-          updates: {'foo': 'bar'},
-        ),
+        () =>
+            client.updateDossier(dossierId: 'dos-123', updates: {'foo': 'bar'}),
         throwsA(isA<TransientRemoteException>()),
       );
     });
@@ -195,21 +198,125 @@ void main() {
         }),
       );
       await expectLater(
-        () => client.updateDossier(
-          dossierId: 'dos-123',
-          updates: {'foo': 'bar'},
-        ),
+        () =>
+            client.updateDossier(dossierId: 'dos-123', updates: {'foo': 'bar'}),
+        throwsA(isA<TransientRemoteException>()),
+      );
+    });
+  });
+
+  group('mutations JSON groupées', () {
+    test(
+      'regroupe plusieurs écritures dans un seul POST /api/sync/batch',
+      () async {
+        var networkCalls = 0;
+        final client = NocodbApiClient(
+          enableJsonBatching: true,
+          client: MockClient((request) async {
+            networkCalls += 1;
+            expect(request.method, 'POST');
+            expect(request.url.path, '/api/sync/batch');
+            final payload = jsonDecode(request.body) as Map<String, dynamic>;
+            final operations = payload['operations'] as List<dynamic>;
+            expect(operations, hasLength(3));
+            expect(
+              operations.map((op) => (op as Map)['path']),
+              containsAll([
+                '/api/dossiers/dos-1',
+                '/api/beneficiaires/patient-1',
+                '/api/observations/dos-1',
+              ]),
+            );
+            return http.Response(
+              jsonEncode({
+                'success': true,
+                'results': operations
+                    .map(
+                      (raw) => {
+                        'id': (raw as Map)['id'],
+                        'status': 200,
+                        'body': {
+                          'success': true,
+                          'data': {'updatedAt': '2026-08-05T12:00:00Z'},
+                        },
+                      },
+                    )
+                    .toList(),
+              }),
+              200,
+            );
+          }),
+        );
+
+        final dossierFuture = client.updateDossier(
+          dossierId: 'dos-1',
+          updates: {'status': 'ok'},
+        );
+        final beneficiaryFuture = client.updateBeneficiary(
+          patientId: 'patient-1',
+          updates: {'firstName': 'Alice'},
+        );
+        final observationsFuture = client.updateObservations(
+          dossierId: 'dos-1',
+          updates: {'projetSouhaitUsage': 'Rester à domicile'},
+        );
+
+        final results = await Future.wait([dossierFuture, beneficiaryFuture]);
+        await observationsFuture;
+
+        expect(networkCalls, 1);
+        expect(results, everyElement('2026-08-05T12:00:00Z'));
+      },
+    );
+
+    test('un échec partiel reste attaché à la bonne opération', () async {
+      final client = NocodbApiClient(
+        enableJsonBatching: true,
+        client: MockClient((request) async {
+          final payload = jsonDecode(request.body) as Map<String, dynamic>;
+          final operations = payload['operations'] as List<dynamic>;
+          return http.Response(
+            jsonEncode({
+              'success': true,
+              'results': operations.map((raw) {
+                final operation = raw as Map;
+                final isDossier = operation['path'] == '/api/dossiers/dos-1';
+                return {
+                  'id': operation['id'],
+                  'status': isDossier ? 200 : 503,
+                  'body': {'success': isDossier},
+                };
+              }).toList(),
+            }),
+            200,
+          );
+        }),
+      );
+
+      final dossierFuture = client.updateDossier(
+        dossierId: 'dos-1',
+        updates: {'status': 'ok'},
+      );
+      final beneficiaryFuture = client.updateBeneficiary(
+        patientId: 'patient-1',
+        updates: {'firstName': 'Alice'},
+      );
+
+      await expectLater(dossierFuture, completes);
+      await expectLater(
+        beneficiaryFuture,
         throwsA(isA<TransientRemoteException>()),
       );
     });
   });
 
   group('loginToRemote — RemoteLoginResult', () {
-    test('200 + token → success', () async {
+    test('200 + jetons accès/renouvellement → success', () async {
       final client = NocodbApiClient(
         client: MockClient((_) async {
           return http.Response(
-            '{"success":true,"data":{"token":"jwt-abc"}}',
+            '{"success":true,"data":{"token":"jwt-abc",'
+            '"refreshToken":"refresh-abc"}}',
             200,
           );
         }),
@@ -220,6 +327,7 @@ void main() {
       );
       expect(result.isSuccess, isTrue);
       expect(result.token, 'jwt-abc');
+      expect(result.refreshToken, 'refresh-abc');
     });
 
     test('401 → rejected (admin a changé le mdp serveur, hash local doit '
@@ -268,6 +376,53 @@ void main() {
     });
   });
 
+  group('refreshRemoteSession', () {
+    test('renouvelle et fait tourner les deux jetons', () async {
+      final client = NocodbApiClient(
+        client: MockClient((request) async {
+          expect(request.url.path, '/api/auth/refresh');
+          expect(jsonDecode(request.body), {'refreshToken': 'refresh-old'});
+          return http.Response(
+            '{"success":true,"data":{"token":"access-new",'
+            '"refreshToken":"refresh-new"}}',
+            200,
+          );
+        }),
+      );
+
+      final result = await client.refreshRemoteSession('refresh-old');
+
+      expect(result.isSuccess, isTrue);
+      expect(result.token, 'access-new');
+      expect(result.refreshToken, 'refresh-new');
+    });
+
+    test('401 signifie que le renouvellement est réellement rejeté', () async {
+      final client = NocodbApiClient(
+        client: MockClient((_) async => http.Response('', 401)),
+      );
+
+      final result = await client.refreshRemoteSession('refresh-old');
+
+      expect(result.rejected, isTrue);
+    });
+
+    test(
+      'panne TLS conserve la session pour une tentative ultérieure',
+      () async {
+        final client = NocodbApiClient(
+          client: MockClient((_) async {
+            throw HandshakeException('serveur indisponible');
+          }),
+        );
+
+        final result = await client.refreshRemoteSession('refresh-old');
+
+        expect(result.isUnreachable, isTrue);
+      },
+    );
+  });
+
   group('validateSessionToken (audit P0 #1, fix 2026-05-15)', () {
     test('200 → valid', () async {
       final client = NocodbApiClient(
@@ -275,10 +430,7 @@ void main() {
           return http.Response('{"success":true,"data":{"user":{}}}', 200);
         }),
       );
-      expect(
-        await client.validateSessionToken(),
-        SessionTokenStatus.valid,
-      );
+      expect(await client.validateSessionToken(), SessionTokenStatus.valid);
     });
 
     test('401 → rejected (signal que le serveur strict est déployé → '
@@ -288,10 +440,7 @@ void main() {
           return http.Response('{"error":"Session invalide"}', 401);
         }),
       );
-      expect(
-        await client.validateSessionToken(),
-        SessionTokenStatus.rejected,
-      );
+      expect(await client.validateSessionToken(), SessionTokenStatus.rejected);
     });
 
     test('403 → rejected', () async {
@@ -300,10 +449,7 @@ void main() {
           return http.Response('{"error":"Forbidden"}', 403);
         }),
       );
-      expect(
-        await client.validateSessionToken(),
-        SessionTokenStatus.rejected,
-      );
+      expect(await client.validateSessionToken(), SessionTokenStatus.rejected);
     });
 
     test('500 → unreachable (on garde le token, mode offline OK)', () async {
@@ -336,10 +482,7 @@ void main() {
       final client = NocodbApiClient(
         client: MockClient((_) async => http.Response('', 200)),
       );
-      expect(
-        await client.validateSessionToken(),
-        SessionTokenStatus.rejected,
-      );
+      expect(await client.validateSessionToken(), SessionTokenStatus.rejected);
     });
 
     test('apiBaseUrl absent (boot incomplet) → unreachable (pas de '
@@ -362,18 +505,9 @@ void main() {
           expect(request.url.path, '/api/note-pages/patient-69');
           expect(request.url.queryParameters['tabKey'], 'notes_rapides');
           expect(request.url.queryParameters['pageNumber'], '0');
-          expect(
-            request.url.queryParameters['scopeType'],
-            'dossier_detail',
-          );
-          expect(
-            request.url.queryParameters['scopeId'],
-            'airtable:dossier-62',
-          );
-          return http.Response(
-            '{"success":true,"data":{"notePages":[]}}',
-            200,
-          );
+          expect(request.url.queryParameters['scopeType'], 'dossier_detail');
+          expect(request.url.queryParameters['scopeId'], 'airtable:dossier-62');
+          return http.Response('{"success":true,"data":{"notePages":[]}}', 200);
         }),
       );
 

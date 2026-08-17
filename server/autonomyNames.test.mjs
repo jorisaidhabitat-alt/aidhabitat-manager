@@ -16,10 +16,11 @@ test('le libellé historique des tâches ménagères reste compatible', () => {
 });
 
 test('la lecture NocoDB conserve la coche par occupant', () => {
-  const autonomy = AUTONOMY_ITEMS.map((name, index) => ({
-    name: index === 7 ? 'Tâches ménagères.domestiques' : name,
-    checked: index === 7,
-  }));
+  const autonomy = [
+    { name: 'Communication', checked: false },
+    { name: 'Tâches ménagères.domestiques', checked: true },
+    { name: 'Escaliers', checked: false },
+  ];
   const parsed = parseChecklistDone({
     fields: {
       occupants_json: JSON.stringify([
@@ -31,6 +32,7 @@ test('la lecture NocoDB conserve la coche par occupant', () => {
   assert.equal(parsed.checklist[7].name, 'Tâches ménagères');
   assert.equal(parsed.checklist[7].checked, true);
   assert.equal(parsed.occupants[0].autonomy[7].checked, true);
+  assert.equal(parsed.occupants[0].autonomy[0].checked, false);
 });
 
 test('la colonne de synthèse utilise le libellé canonique', () => {

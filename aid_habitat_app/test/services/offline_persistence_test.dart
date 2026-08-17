@@ -39,6 +39,14 @@ void main() {
         sync_state TEXT NOT NULL
       )
     ''');
+    for (final table in ['dossiers', 'patients', 'housings', 'documents']) {
+      await db.execute('''
+        CREATE TABLE $table (
+          local_id TEXT PRIMARY KEY,
+          sync_state TEXT NOT NULL
+        )
+      ''');
+    }
   });
 
   tearDown(() async {
@@ -185,6 +193,43 @@ void main() {
       expect(operationRows.single['status'], 'completed');
       expect(noteRows.single['sync_state'], 'synced');
     });
+
+    test(
+      'un ancien conflit est rejoué sans supprimer son payload local',
+      () async {
+        const payload = '{"drawingJson":"terrain data to preserve"}';
+        await db.insert('note_pages', {
+          'local_id': 'note_test_0',
+          'sync_state': 'conflict',
+        });
+        await insertOperation(
+          id: 'sync_legacy_conflict',
+          status: 'conflict',
+          payload: payload,
+          attempts: 3,
+          error: 'Ancien conflit 409',
+        );
+
+        final repository = SyncRepository(databaseProvider: () async => db);
+        final unstuck = await repository.unstickConflictedEntities();
+
+        expect(unstuck, 1);
+        final rows = await db.query(
+          'sync_operations',
+          where: 'id = ?',
+          whereArgs: const ['sync_legacy_conflict'],
+        );
+        expect(rows, hasLength(1));
+        expect(rows.single['status'], 'pending');
+        expect(rows.single['payload_json'], payload);
+        expect(rows.single['attempt_count'], 0);
+        expect(rows.single['last_error'], isNull);
+
+        final runnable = await repository.fetchRunnableOperations();
+        expect(runnable, hasLength(1));
+        expect(runnable.single.payloadJson, payload);
+      },
+    );
   });
 
   test(

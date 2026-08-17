@@ -59,6 +59,54 @@ void main() {
     },
   );
 
+  test('une panne longue ne stoppe jamais les reprises de session', () async {
+    final repository = _FakeSyncRepository();
+    final service = _FakeSyncService();
+    final engine = SyncEngine.testing(
+      syncService: service,
+      syncRepository: repository,
+    );
+    var attempts = 0;
+    engine.bindRemoteSessionPreparer(() async {
+      attempts += 1;
+      return false;
+    });
+
+    engine.start(pullRemote: false);
+    for (var expected = 1; expected <= 12; expected += 1) {
+      await _waitUntil(() => attempts >= expected);
+      await _waitUntil(() => !engine.currentState.isSyncing);
+      if (expected < 12) engine.requestSync();
+    }
+
+    expect(repository.pendingCount, 1);
+    expect(service.pushCalls, 0);
+    expect(engine.currentState.lastError, isNull);
+    expect(engine.currentState.nextRetryAt, isNotNull);
+    engine.dispose();
+  });
+
+  test('les reports réseau répétés restent silencieux et en attente', () async {
+    final repository = _FakeSyncRepository();
+    final service = _DeferredSyncService();
+    final engine = SyncEngine.testing(
+      syncService: service,
+      syncRepository: repository,
+    );
+
+    engine.start(pullRemote: false);
+    for (var expected = 1; expected <= 12; expected += 1) {
+      await _waitUntil(() => service.pushCalls >= expected);
+      await _waitUntil(() => !engine.currentState.isSyncing);
+      if (expected < 12) engine.requestSync();
+    }
+
+    expect(repository.pendingCount, 1);
+    expect(engine.currentState.lastError, isNull);
+    expect(engine.currentState.nextRetryAt, isNotNull);
+    engine.dispose();
+  });
+
   test('au retour réseau, le push termine avant le pull workspace', () async {
     final repository = _FakeSyncRepository();
     final service = _BlockingSyncService();
@@ -186,6 +234,21 @@ class _FakeSyncService extends NocodbSyncService {
       pushedOperations: 0,
       failedOperations: 0,
       message: 'Synchronisation terminée',
+    );
+  }
+}
+
+class _DeferredSyncService extends NocodbSyncService {
+  int pushCalls = 0;
+
+  @override
+  Future<SyncRunResult> pushPendingChanges() async {
+    pushCalls += 1;
+    return const SyncRunResult(
+      pushedOperations: 0,
+      failedOperations: 0,
+      deferredOperations: 1,
+      message: 'Synchronisation en attente de reprise',
     );
   }
 }

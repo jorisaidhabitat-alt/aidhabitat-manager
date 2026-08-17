@@ -695,7 +695,7 @@ class AutonomyItem {
   const AutonomyItem({required this.name, this.checked = false});
 
   factory AutonomyItem.fromJson(Map<String, dynamic> json) => AutonomyItem(
-    name: json['name'] as String? ?? '',
+    name: canonicalAutonomyItemName(json['name'] as String? ?? ''),
     checked: json['checked'] as bool? ?? false,
   );
 

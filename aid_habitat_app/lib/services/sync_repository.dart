@@ -956,8 +956,8 @@ class SyncRepository {
   /// `note_pages`. Pour chacune :
   ///   1. Reset son `sync_state` à `synced` (le prochain pull NocoDB
   ///      pourra alors appliquer le merge sans skipper la ligne).
-  ///   2. Purge les ops `sync_operations` pending/failed/conflict qui
-  ///      la concernent.
+  ///   2. Réhabilite les anciennes ops `conflict` en `pending` pour que leur
+  ///      payload local soit rejoué avant le prochain pull.
   ///
   /// Renvoie le nombre TOTAL de lignes débloquées (somme des updates
   /// sur les 5 tables — utile pour le log de boot).
@@ -965,7 +965,8 @@ class SyncRepository {
   /// Demande utilisateur 2026-04-30 : « il ne faut aucun bouton ni
   /// intervention tout doit se faire tout seul en backend » →
   /// l'écran de résolution de conflit n'est plus nécessaire, on
-  /// applique systématiquement la version serveur.
+  /// résout désormais automatiquement le conflit en conservant la mutation
+  /// locale. Aucun payload n'est supprimé au démarrage.
   Future<int> unstickConflictedEntities() async {
     final db = await _database.database;
     var total = 0;
@@ -985,15 +986,21 @@ class SyncRepository {
       );
       total += updated;
     }
-    // Purge des ops `conflict` (le `purgeStalePendingOperations` ne
-    // touche que les `failed` / `running` ; les `conflict` restaient
-    // en queue pour toujours). Au passage on prend aussi les `failed`
-    // au cas où — `discardFailedOperations` existe mais purge tout
-    // sans cibler les entités unstuck-ées, ce qu'on veut justement.
-    await db.delete(
+    // Les anciens builds laissaient parfois une opération en `conflict`.
+    // La supprimer perdrait la seule copie sérialisée de la saisie terrain.
+    // On la remet en attente : le drain la poussera avant le pull et le
+    // mécanisme 409 force-local résoudra le conflit sans intervention.
+    await db.update(
       'sync_operations',
+      {
+        'status': SyncOperationStatus.pending.name,
+        'attempt_count': 0,
+        'last_error': null,
+        'updated_at': DateTime.now().toIso8601String(),
+      },
       where: 'status = ?',
-      whereArgs: ['conflict'],
+      // Valeur héritée d'anciennes versions, absente de l'enum actuelle.
+      whereArgs: const ['conflict'],
     );
     return total;
   }

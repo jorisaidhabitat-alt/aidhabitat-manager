@@ -60,18 +60,15 @@ class DataService {
   Future<void> purgeStaleSyncOperations() async {
     try {
       await _syncRepository.purgeStalePendingOperations();
-      // Récupération boot pour les conflits stuck depuis l'ancien
-      // monde (où on marquait `conflict` et on attendait l'action
-      // utilisateur). On reset ces entités à `synced` et on clear
-      // leurs ops pending — le prochain pull workspace appliquera la
-      // vérité serveur. Demande utilisateur 2026-04-30 : « tout doit
-      // se faire tout seul en backend ».
+      // Récupération boot pour les conflits bloqués depuis les anciens
+      // builds. Les opérations sont remises en attente sans supprimer leur
+      // payload ; le push local sera rejoué avant le prochain pull distant.
       final unstuckCount = await _syncRepository.unstickConflictedEntities();
       if (unstuckCount > 0) {
         // ignore: avoid_print
         print(
           '[boot] $unstuckCount entité(s) en conflict débloquée(s) → '
-          'le prochain pull les rafraîchira avec la version serveur',
+          'mutations locales remises en attente avant le prochain pull',
         );
       }
     } catch (_) {

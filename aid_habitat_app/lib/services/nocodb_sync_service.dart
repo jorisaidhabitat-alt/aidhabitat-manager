@@ -3,7 +3,6 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:http/http.dart' as http;
 import 'package:sqflite/sqflite.dart';
 
@@ -71,10 +70,9 @@ const Set<String> _kPermanent4xxMarkers = {
 /// comme **transitoire** (rejouée silencieusement au prochain cycle)
 /// plutôt que comme un échec définitif qui remonte un bandeau rouge.
 ///
-/// Exposée publiquement (vs `_`-prefix) avec `@visibleForTesting` pour
-/// que la suite de tests `test/services/sync_errors_test.dart` puisse
-/// vérifier la classification de chaque code/exception.
-@visibleForTesting
+/// Exposée publiquement car le service et le moteur de synchronisation
+/// appliquent exactement la même classification. La suite de tests
+/// `test/services/sync_errors_test.dart` verrouille ce contrat.
 bool isTransientErrorLike(Object error) {
   if (error is TimeoutException) return true;
   if (error is SocketException) return true;
@@ -146,7 +144,8 @@ class NocodbSyncService {
   /// Maximum number of entities processed in parallel. Operations on the
   /// same entity (same entity_type + entity_local_id) always run sequentially
   /// to preserve ordering, but different entities can sync concurrently.
-  static const int _maxConcurrency = 4;
+  static const int _maxConcurrency = 3;
+  static const Duration _interGroupDelay = Duration(milliseconds: 150);
 
   /// Lit la valeur `remote_updated_at` de la ligne locale identifiée
   /// par [idColumn] = [idValue] dans [table]. Renvoie `null` si la
@@ -272,6 +271,12 @@ class NocodbSyncService {
         final group = queue.removeAt(0);
         final r = await _processGroup(group);
         results.add(r);
+        // Laisse respirer le réseau et le serveur entre deux groupes. Après
+        // plusieurs heures hors ligne, cela évite qu'un worker enchaîne une
+        // longue file sans laisser NocoDB libérer ses connexions/mémoire.
+        if (queue.isNotEmpty) {
+          await Future<void>.delayed(_interGroupDelay);
+        }
       }
     }
 
@@ -332,7 +337,7 @@ class NocodbSyncService {
         );
         pushed += 1;
       } on ConflictException catch (e) {
-        // Auto-résolution « remote wins » (cf. commentaire identique
+        // Auto-résolution « local wins » (cf. commentaire identique
         // dans le for-loop principal). On résout puis on continue à
         // pousser les ops suivantes du groupe — utile si l'op
         // suivante est sur un champ différent qui ne conflictera pas.
@@ -352,8 +357,10 @@ class NocodbSyncService {
           error: e.toString(),
         );
         deferred += 1;
-        // Pas de break : les ops transitoires n'invalident pas la suite
-        // (le serveur peut avoir juste un hoquet éphémère).
+        // Préserve l'ordre des mutations d'une même entité. Une opération
+        // plus récente ne doit jamais dépasser celle qui vient d'échouer,
+        // sinon son prochain retry pourrait rétablir un état obsolète.
+        break;
       } catch (error, stack) {
         // Filet de sécurité : reclasse toute erreur réseau bas niveau
         // (incluant `http.ClientException: Load failed` côté iPad PWA)
@@ -378,10 +385,9 @@ class NocodbSyncService {
             error: error.toString(),
           );
           deferred += 1;
-          // Ne casse PAS le groupe sur transient — les ops suivantes
-          // peuvent passer (le serveur a peut-être juste un hoquet
-          // éphémère).
-          continue;
+          // Même règle d'ordre que pour TransientRemoteException : les
+          // opérations suivantes restent pending jusqu'au prochain cycle.
+          break;
         }
         // ignore: avoid_print
         print(

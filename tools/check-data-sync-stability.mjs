@@ -10,6 +10,11 @@ import path from 'node:path';
 import process from 'node:process';
 import dotenv from 'dotenv';
 import { readAndVerifyBackup } from './nocodbBackupLib.mjs';
+import {
+  AUTONOMY_ITEMS,
+  canonicalAutonomyItemName,
+  normalizeAutonomyChecklist,
+} from '../shared/autonomyContract.js';
 
 dotenv.config({ path: '.env.local', quiet: true });
 
@@ -140,6 +145,18 @@ const COLUMN_CHECKS = {
       beneficiaires_id: ['ForeignKey', 'LinkToAnotherRecord', 'Number'],
     },
   },
+  contexte_de_vie: {
+    required: [
+      'uuid_source',
+      'dossier_id',
+      'beneficiaire_id',
+      'occupants_json',
+      'autonomie_toilette',
+      'autonomie_repas',
+      'autonomie_menage',
+      'autonomie_demarches_admin',
+    ],
+  },
   logements: {
     required: [
       'uuid_source',
@@ -239,6 +256,13 @@ const normalizeTitle = (value) => String(value || '').trim().toLowerCase();
 const recordValue = (record, key) => {
   const value = record?.[key] ?? record?.fields?.[key];
   return value == null ? '' : String(value).trim();
+};
+
+const recordBoolean = (record, key) => {
+  const value = record?.[key] ?? record?.fields?.[key];
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') return value !== 0;
+  return ['1', 'true', 'oui', 'yes', 'on'].includes(String(value ?? '').trim().toLowerCase());
 };
 
 async function fileExists(file) {
@@ -528,6 +552,97 @@ async function checkCountsAndConsistency(resolvedTables) {
     mark('consistency:note-pages', {
       checkedNotes: notes.length,
       incompleteNotes: incomplete.length,
+      sampleLimit,
+    });
+  }
+
+  const contextTable = resolvedTables.get('contexte_de_vie');
+  if (contextTable) {
+    const contexts = await fetchRecordsSample('contexte_de_vie', contextTable);
+    let malformedJson = 0;
+    let invalidChecklists = 0;
+    let summaryMismatches = 0;
+
+    const summaryColumns = new Map([
+      ['Toilette/habillage', 'autonomie_toilette'],
+      ['Repas (y compris courses)', 'autonomie_repas'],
+      ['Tâches ménagères', 'autonomie_menage'],
+      ['Démarches admin', 'autonomie_demarches_admin'],
+    ]);
+
+    for (const context of contexts) {
+      const contextId = String(context?.Id ?? context?.id ?? 'inconnu');
+      const raw = recordValue(context, 'occupants_json');
+      if (!raw) continue;
+
+      let occupants;
+      try {
+        occupants = JSON.parse(raw);
+      } catch {
+        malformedJson += 1;
+        fail(`contexte_de_vie ${contextId}: occupants_json invalide`, { contextId });
+        continue;
+      }
+
+      if (!Array.isArray(occupants)) {
+        malformedJson += 1;
+        fail(`contexte_de_vie ${contextId}: occupants_json n'est pas une liste`, { contextId });
+        continue;
+      }
+
+      occupants.forEach((occupant, occupantIndex) => {
+        for (const key of ['autonomy', 'attention', 'humanHelp']) {
+          const checklist = occupant?.[key];
+          if (!Array.isArray(checklist)) {
+            invalidChecklists += 1;
+            fail(`contexte_de_vie ${contextId}: ${key} absent pour occupant ${occupantIndex + 1}`, {
+              contextId,
+              occupantIndex,
+              checklist: key,
+            });
+            continue;
+          }
+
+          const names = checklist.map((item) => canonicalAutonomyItemName(item?.name));
+          const recognized = names.filter((name) => AUTONOMY_ITEMS.includes(name));
+          const duplicateNames = recognized.filter((name, index) => recognized.indexOf(name) !== index);
+          const unknownNames = names.filter((name) => name && !AUTONOMY_ITEMS.includes(name));
+          const missingNames = AUTONOMY_ITEMS.filter((name) => !recognized.includes(name));
+          if (duplicateNames.length > 0 || unknownNames.length > 0 || missingNames.length > 0) {
+            invalidChecklists += 1;
+            fail(`contexte_de_vie ${contextId}: contrat ${key} incohérent pour occupant ${occupantIndex + 1}`, {
+              contextId,
+              occupantIndex,
+              checklist: key,
+              duplicateNames: [...new Set(duplicateNames)],
+              unknownNames: [...new Set(unknownNames)],
+              missingNames,
+            });
+          }
+        }
+      });
+
+      const primary = occupants[0];
+      if (!primary || !Array.isArray(primary.autonomy)) continue;
+      const primaryMap = new Map(
+        normalizeAutonomyChecklist(primary.autonomy).map((item) => [item.name, item.checked]),
+      );
+      for (const [itemName, column] of summaryColumns) {
+        if (recordBoolean(context, column) !== Boolean(primaryMap.get(itemName))) {
+          summaryMismatches += 1;
+          fail(`contexte_de_vie ${contextId}: divergence occupants_json / ${column}`, {
+            contextId,
+            column,
+          });
+        }
+      }
+    }
+
+    mark('consistency:context-autonomy', {
+      checkedContexts: contexts.length,
+      malformedJson,
+      invalidChecklists,
+      summaryMismatches,
       sampleLimit,
     });
   }

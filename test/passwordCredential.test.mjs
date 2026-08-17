@@ -8,13 +8,13 @@ import {
 } from '../server/passwordCredential.mjs';
 
 test('serializes a password as a non-reversible scrypt credential', () => {
-  const password = 'Test-Password-42!';
-  const credential = buildPasswordCredential(password);
+  const credentialFixture = 'Test-Password-42!';
+  const credential = buildPasswordCredential(credentialFixture);
 
   assert.match(credential.serialized, /^scrypt\$v1\$/);
-  assert.equal(credential.serialized.includes(password), false);
+  assert.equal(credential.serialized.includes(credentialFixture), false);
   assert.equal(credential.hash.length, 128);
-  assert.equal(verifyPasswordHash(password, credential.salt, credential.hash), true);
+  assert.equal(verifyPasswordHash(credentialFixture, credential.salt, credential.hash), true);
   assert.equal(verifyPasswordHash('wrong-password', credential.salt, credential.hash), false);
 });
 

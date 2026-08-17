@@ -22,10 +22,12 @@ class _AuthAwareHttpClient extends http.BaseClient {
     final isAuthenticatedRequest = token.isNotEmpty;
     final path = request.url.path;
     final isAuthEndpoint =
-        path.endsWith('/api/auth/login') || path.endsWith('/api/auth/session');
+        path.endsWith('/api/auth/login') ||
+        path.endsWith('/api/auth/refresh') ||
+        path.endsWith('/api/auth/session');
     if (isAuthenticatedRequest &&
         !isAuthEndpoint &&
-        (response.statusCode == 401 || response.statusCode == 403)) {
+        response.statusCode == 401) {
       unawaited(AppConfig.notifyUnauthorized());
     }
     return response;
@@ -73,13 +75,20 @@ class TransientRemoteException implements Exception {
 ///     Le caller peut tomber sur le hash local pour usage offline.
 class RemoteLoginResult {
   final String? token;
+  final String? refreshToken;
   final bool rejected;
 
-  const RemoteLoginResult._({this.token, required this.rejected});
-  const RemoteLoginResult.success(String token)
-    : this._(token: token, rejected: false);
-  const RemoteLoginResult.rejected() : this._(token: null, rejected: true);
-  const RemoteLoginResult.unreachable() : this._(token: null, rejected: false);
+  const RemoteLoginResult._({
+    this.token,
+    this.refreshToken,
+    required this.rejected,
+  });
+  const RemoteLoginResult.success(String token, {String? refreshToken})
+    : this._(token: token, refreshToken: refreshToken, rejected: false);
+  const RemoteLoginResult.rejected()
+    : this._(token: null, refreshToken: null, rejected: true);
+  const RemoteLoginResult.unreachable()
+    : this._(token: null, refreshToken: null, rejected: false);
 
   bool get isSuccess => token != null && !rejected;
   bool get isUnreachable => token == null && !rejected;
@@ -95,6 +104,7 @@ enum SessionTokenStatus { valid, rejected, unreachable }
 bool _isTransientNetworkError(Object error) =>
     error is TimeoutException ||
     error is SocketException ||
+    error is HandshakeException ||
     error is HttpException ||
     error is http.ClientException;
 
@@ -125,15 +135,42 @@ Future<http.Response> _runWithTransientGuard(
   }
 }
 
+class _QueuedJsonMutation {
+  _QueuedJsonMutation({
+    required this.id,
+    required this.method,
+    required this.path,
+    required this.body,
+  });
+
+  final String id;
+  final String method;
+  final String path;
+  final Map<String, dynamic> body;
+  final Completer<http.Response> completer = Completer<http.Response>();
+}
+
 class NocodbApiClient {
-  NocodbApiClient({http.Client? client})
-    : _client = _AuthAwareHttpClient(client ?? http.Client());
+  NocodbApiClient({http.Client? client, bool? enableJsonBatching})
+    : _client = _AuthAwareHttpClient(client ?? http.Client()),
+      // Les tests injectent un MockClient et conservent par défaut les routes
+      // unitaires historiques. La production, qui ne fournit pas de client,
+      // active automatiquement le regroupement des mutations JSON légères.
+      _jsonBatchingEnabled = enableJsonBatching ?? client == null;
 
   final http.Client _client;
+  final bool _jsonBatchingEnabled;
+  final List<_QueuedJsonMutation> _jsonMutationQueue = [];
+  Timer? _jsonBatchTimer;
+  bool _jsonBatchFlushRunning = false;
+  int _jsonBatchRequestSequence = 0;
 
   /// Default timeout for regular JSON requests. Kept short so slow networks
   /// fail fast and the sync engine can retry with backoff instead of hanging.
   static const Duration _defaultTimeout = Duration(seconds: 20);
+  static const Duration _jsonBatchTimeout = Duration(seconds: 240);
+  static const Duration _jsonBatchWindow = Duration(milliseconds: 30);
+  static const int _maxJsonBatchSize = 3;
 
   /// Longer timeout for multipart uploads (documents), which can legitimately
   /// take longer on mobile networks.
@@ -156,6 +193,153 @@ class NocodbApiClient {
     'Content-Type': 'application/json',
     'X-App-Session': AppConfig.appSessionToken,
   };
+
+  String _pathSegment(String value) => Uri.encodeComponent(value);
+
+  Future<http.Response> _sendJsonMutation({
+    required String method,
+    required String path,
+    required Map<String, dynamic> body,
+  }) {
+    if (!_jsonBatchingEnabled) {
+      final uri = Uri.parse('$_baseUrl$path');
+      switch (method) {
+        case 'PATCH':
+          return _client.patch(uri, headers: _headers, body: jsonEncode(body));
+        case 'PUT':
+          return _client.put(uri, headers: _headers, body: jsonEncode(body));
+        default:
+          throw ArgumentError.value(method, 'method', 'Méthode non supportée');
+      }
+    }
+
+    final mutation = _QueuedJsonMutation(
+      id:
+          'mobile-${DateTime.now().microsecondsSinceEpoch}-'
+          '${_jsonBatchRequestSequence++}',
+      method: method,
+      path: path,
+      body: Map<String, dynamic>.from(body),
+    );
+    _jsonMutationQueue.add(mutation);
+
+    if (_jsonMutationQueue.length >= _maxJsonBatchSize) {
+      _jsonBatchTimer?.cancel();
+      _jsonBatchTimer = null;
+      unawaited(_flushJsonMutationQueue());
+    } else {
+      _jsonBatchTimer ??= Timer(_jsonBatchWindow, () {
+        _jsonBatchTimer = null;
+        unawaited(_flushJsonMutationQueue());
+      });
+    }
+
+    return mutation.completer.future;
+  }
+
+  Future<void> _flushJsonMutationQueue() async {
+    if (_jsonBatchFlushRunning) return;
+    _jsonBatchFlushRunning = true;
+    _jsonBatchTimer?.cancel();
+    _jsonBatchTimer = null;
+
+    try {
+      while (_jsonMutationQueue.isNotEmpty) {
+        final takeCount = _jsonMutationQueue.length < _maxJsonBatchSize
+            ? _jsonMutationQueue.length
+            : _maxJsonBatchSize;
+        final batch = _jsonMutationQueue.sublist(0, takeCount);
+        _jsonMutationQueue.removeRange(0, takeCount);
+
+        try {
+          final outerResponse = await _client
+              .post(
+                Uri.parse('$_baseUrl/api/sync/batch'),
+                headers: _headers,
+                body: jsonEncode({
+                  'operations': batch
+                      .map(
+                        (mutation) => {
+                          'id': mutation.id,
+                          'method': mutation.method,
+                          'path': mutation.path,
+                          'body': mutation.body,
+                        },
+                      )
+                      .toList(),
+                }),
+              )
+              .timeout(_jsonBatchTimeout);
+
+          if (outerResponse.statusCode < 200 ||
+              outerResponse.statusCode >= 300) {
+            for (final mutation in batch) {
+              if (!mutation.completer.isCompleted) {
+                mutation.completer.complete(outerResponse);
+              }
+            }
+            continue;
+          }
+
+          final decoded = jsonDecode(outerResponse.body);
+          final rawResults = decoded is Map ? decoded['results'] : null;
+          if (rawResults is! List) {
+            throw const FormatException('Résultats du lot absents');
+          }
+          final resultsById = <String, Map<String, dynamic>>{};
+          for (final rawResult in rawResults) {
+            if (rawResult is Map) {
+              final result = rawResult.cast<String, dynamic>();
+              resultsById[result['id']?.toString() ?? ''] = result;
+            }
+          }
+
+          for (final mutation in batch) {
+            final result = resultsById[mutation.id];
+            if (result == null) {
+              throw FormatException(
+                'Résultat absent pour l’opération ${mutation.id}',
+              );
+            }
+            final status = (result['status'] as num?)?.toInt() ?? 503;
+            final responseBody = result['body'];
+            if (status == 401) {
+              unawaited(AppConfig.notifyUnauthorized());
+            }
+            mutation.completer.complete(
+              http.Response(
+                responseBody == null ? '' : jsonEncode(responseBody),
+                status,
+                headers: {
+                  if (result['retryAfter'] != null)
+                    'retry-after': result['retryAfter'].toString(),
+                  'content-type': 'application/json',
+                },
+              ),
+            );
+          }
+        } catch (error, stackTrace) {
+          for (final mutation in batch) {
+            if (!mutation.completer.isCompleted) {
+              mutation.completer.completeError(error, stackTrace);
+            }
+          }
+        }
+
+        if (_jsonMutationQueue.isNotEmpty) {
+          await Future<void>.delayed(const Duration(milliseconds: 75));
+        }
+      }
+    } finally {
+      _jsonBatchFlushRunning = false;
+      if (_jsonMutationQueue.isNotEmpty) {
+        _jsonBatchTimer ??= Timer(_jsonBatchWindow, () {
+          _jsonBatchTimer = null;
+          unawaited(_flushJsonMutationQueue());
+        });
+      }
+    }
+  }
 
   Future<List<Dossier>> fetchDossiers() async {
     final raw = await fetchDossierPayloads();
@@ -258,13 +442,11 @@ class NocodbApiClient {
     // base bien peuplée.
     final response = await _runWithTransientGuard(
       'Remote dossier update',
-      () => _client
-          .patch(
-            Uri.parse('$_baseUrl/api/dossiers/$dossierId'),
-            headers: _headers,
-            body: jsonEncode(updates),
-          )
-          .timeout(const Duration(seconds: 60)),
+      () => _sendJsonMutation(
+        method: 'PATCH',
+        path: '/api/dossiers/${_pathSegment(dossierId)}',
+        body: updates,
+      ).timeout(_jsonBatchTimeout),
     );
 
     if (response.statusCode == 409) {
@@ -332,13 +514,11 @@ class NocodbApiClient {
     // de pouvoir mapper les updates.
     final response = await _runWithTransientGuard(
       'Remote beneficiary update',
-      () => _client
-          .patch(
-            Uri.parse('$_baseUrl/api/beneficiaires/$patientId'),
-            headers: _headers,
-            body: jsonEncode(updates),
-          )
-          .timeout(const Duration(seconds: 60)),
+      () => _sendJsonMutation(
+        method: 'PATCH',
+        path: '/api/beneficiaires/${_pathSegment(patientId)}',
+        body: updates,
+      ).timeout(_jsonBatchTimeout),
     );
     if (response.statusCode == 409) {
       Map<String, dynamic>? remoteData;
@@ -391,13 +571,11 @@ class NocodbApiClient {
     // endpoints d'écriture lourds.
     final response = await _runWithTransientGuard(
       'Remote logement update',
-      () => _client
-          .patch(
-            Uri.parse('$_baseUrl/api/logements/by-beneficiary/$beneficiaryId'),
-            headers: _headers,
-            body: jsonEncode(updates),
-          )
-          .timeout(const Duration(seconds: 60)),
+      () => _sendJsonMutation(
+        method: 'PATCH',
+        path: '/api/logements/by-beneficiary/${_pathSegment(beneficiaryId)}',
+        body: updates,
+      ).timeout(_jsonBatchTimeout),
     );
     if (response.statusCode == 409) {
       Map<String, dynamic>? remoteData;
@@ -450,13 +628,11 @@ class NocodbApiClient {
     }
     final response = await _runWithTransientGuard(
       'Mesures update',
-      () => _client
-          .put(
-            Uri.parse('$_baseUrl/api/mesures/$dossierId'),
-            headers: _headers,
-            body: jsonEncode(updates),
-          )
-          .timeout(_defaultTimeout),
+      () => _sendJsonMutation(
+        method: 'PUT',
+        path: '/api/mesures/${_pathSegment(dossierId)}',
+        body: updates,
+      ).timeout(_jsonBatchTimeout),
     );
     if (response.statusCode == 409) {
       Map<String, dynamic>? remoteData;
@@ -489,13 +665,11 @@ class NocodbApiClient {
     }
     final response = await _runWithTransientGuard(
       'Observations update',
-      () => _client
-          .put(
-            Uri.parse('$_baseUrl/api/observations/$dossierId'),
-            headers: _headers,
-            body: jsonEncode(updates),
-          )
-          .timeout(_defaultTimeout),
+      () => _sendJsonMutation(
+        method: 'PUT',
+        path: '/api/observations/${_pathSegment(dossierId)}',
+        body: updates,
+      ).timeout(_jsonBatchTimeout),
     );
     if (response.statusCode == 409) {
       Map<String, dynamic>? remoteData;
@@ -632,16 +806,11 @@ class NocodbApiClient {
     // ClientException "Load failed" iPad sont reclassées en transitoires.
     final response = await _runWithTransientGuard(
       'Remote diagnostic sanitaires update',
-      () => _client
-          .put(
-            Uri.parse('$_baseUrl/api/diagnostic-sanitaires/$dossierId'),
-            headers: _headers,
-            body: jsonEncode({
-              'sdbInstances': sdbInstances,
-              'wcInstances': wcInstances,
-            }),
-          )
-          .timeout(const Duration(seconds: 60)),
+      () => _sendJsonMutation(
+        method: 'PUT',
+        path: '/api/diagnostic-sanitaires/${_pathSegment(dossierId)}',
+        body: {'sdbInstances': sdbInstances, 'wcInstances': wcInstances},
+      ).timeout(_jsonBatchTimeout),
     );
     if (response.statusCode == 409) {
       Map<String, dynamic>? remoteData;
@@ -1376,10 +1545,50 @@ class NocodbApiClient {
       if (token == null || token.isEmpty) {
         return const RemoteLoginResult.rejected();
       }
-      return RemoteLoginResult.success(token);
+      return RemoteLoginResult.success(
+        token,
+        refreshToken: data['refreshToken']?.toString(),
+      );
     } catch (_) {
       // Timeout / réseau / DNS / TLS — pas un rejet, le serveur est
       // peut-être hors ligne. Permettre le fallback local.
+      return const RemoteLoginResult.unreachable();
+    }
+  }
+
+  /// Renouvelle silencieusement un jeton d'accès expiré. Le refresh token
+  /// n'est envoyé qu'à cet endpoint et ne transite jamais dans les requêtes
+  /// métier ou les logs de synchronisation.
+  Future<RemoteLoginResult> refreshRemoteSession(String refreshToken) async {
+    if (AppConfig.apiBaseUrl.trim().isEmpty || refreshToken.trim().isEmpty) {
+      return const RemoteLoginResult.rejected();
+    }
+    try {
+      final response = await _client
+          .post(
+            Uri.parse('$_baseUrl/api/auth/refresh'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'refreshToken': refreshToken}),
+          )
+          .timeout(_defaultTimeout);
+      if (response.statusCode == 401 || response.statusCode == 403) {
+        return const RemoteLoginResult.rejected();
+      }
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        return const RemoteLoginResult.unreachable();
+      }
+      final payload = jsonDecode(response.body) as Map<String, dynamic>;
+      final data =
+          (payload['data'] as Map?)?.cast<String, dynamic>() ?? const {};
+      final token = data['token']?.toString();
+      if (payload['success'] != true || token == null || token.isEmpty) {
+        return const RemoteLoginResult.rejected();
+      }
+      return RemoteLoginResult.success(
+        token,
+        refreshToken: data['refreshToken']?.toString(),
+      );
+    } catch (_) {
       return const RemoteLoginResult.unreachable();
     }
   }

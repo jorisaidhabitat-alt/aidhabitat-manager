@@ -63,7 +63,7 @@ class SyncEngine {
   static const Duration _initialDelay = Duration(seconds: 2);
   static const Duration _maxDelay = Duration(minutes: 5);
   static const double _backoffMultiplier = 2.5;
-  static const int _maxConsecutiveFailures = 10;
+  static const int _maxBackoffFailureLevel = 10;
 
   /// Debounce window for push-on-mutation. Rapid successive mutations (e.g.
   /// while the user types) collapse into a single sync cycle.
@@ -160,10 +160,11 @@ class SyncEngine {
     requestSync();
   }
 
-  /// Met l'engine en pause sans détruire le singleton. Utilisé lors d'un
-  /// logout / token rejeté pour éviter de consommer la queue offline avec
-  /// une session invalide. Les opérations `pending` restent en base et
-  /// repartiront au prochain `start()`.
+  /// Met l'engine en pause sans détruire le singleton. Réservé à une
+  /// déconnexion volontaire. Une panne réseau ou une session distante expirée
+  /// ne doit jamais arrêter la file : elle reste active et retente en arrière-
+  /// plan après renouvellement de l'accès. Les opérations `pending` restent en
+  /// base et repartiront au prochain `start()`.
   void stop() {
     if (_disposed) return;
     _started = false;
@@ -416,16 +417,12 @@ class SyncEngine {
 
   void _scheduleRetry() {
     if (_disposed || !_started || _running) return;
-    if (_consecutiveFailures >= _maxConsecutiveFailures) {
-      _emitState(
-        lastError:
-            'Trop de tentatives échouées. '
-            'Appuyez sur Synchroniser pour réessayer.',
-      );
-      return;
-    }
-
-    final delay = _computeBackoff(_consecutiveFailures);
+    // Une indisponibilité peut durer plusieurs heures. La file locale ne doit
+    // jamais être abandonnée après un nombre arbitraire de tentatives : on
+    // plafonne seulement le délai entre deux essais.
+    final delay = _computeBackoff(
+      min(_consecutiveFailures, _maxBackoffFailureLevel),
+    );
     _emitState(nextRetryAt: DateTime.now().add(delay));
     _retryTimer?.cancel();
     _retryTimer = Timer(delay, () {
@@ -470,11 +467,12 @@ class SyncEngine {
           return;
         }
         if (!sessionReady) {
+          _consecutiveFailures += 1;
           _running = false;
           _emitState(
             isSyncing: false,
             pendingCount: pendingBefore,
-            lastError: null,
+            clearError: true,
           );
           _scheduleRetry();
           return;
@@ -559,10 +557,12 @@ class SyncEngine {
       _consecutiveFailures += 1;
       final pendingAfter = await _refreshPendingCount();
       _running = false;
+      final isTransient = isTransientErrorLike(e);
       _emitState(
         isSyncing: false,
         pendingCount: pendingAfter,
-        lastError: e.toString(),
+        clearError: isTransient,
+        lastError: isTransient ? null : e.toString(),
         lastSyncAt: DateTime.now(),
       );
       _scheduleRetry();

@@ -7,6 +7,10 @@ import { ViewportOverlay } from '../../../layout/ViewportOverlay';
 import { cx, uiFieldClass, uiFieldWarningClass, uiLabelClass } from '../../../shared/uiTheme';
 import wikiLibraryStatic from '../../../../data/wikiLibraryStatic.json';
 import {
+    AUTONOMY_ITEMS as AUTONOMY_DEFAULT_ITEMS,
+    normalizeAutonomyChecklist,
+} from '../../../../shared/autonomyContract.js';
+import {
     fetchVisitRecommendations,
     updateDossier,
     updateBeneficiary as updateBeneficiaryService,
@@ -615,32 +619,9 @@ const HEATING_OPTIONS: MultiFieldOption[] = [
     { field: 'other', label: 'Autre' },
 ];
 
-const AUTONOMY_DEFAULT_ITEMS = [
-    "Déplacements/transferts",
-    "Escaliers",
-    "Conduite automobile",
-    "Transports en commun",
-    "Toilette/habillage",
-    "Continence",
-    "Repas (y compris courses)",
-    "Tâches ménagères",
-    "Démarches admin",
-    "Cognition",
-    "Communication",
-];
-
-const canonicalAutonomyItemName = (name: string) => (
-    name === 'Tâches ménagères.domestiques' ? 'Tâches ménagères' : name
+const buildAutonomyItems = (items?: Array<{ name: string; checked: boolean }>) => (
+    normalizeAutonomyChecklist(items).map((item) => ({ ...item, label: item.name }))
 );
-
-const buildAutonomyItems = (items?: Array<{ name: string; checked: boolean }>) => AUTONOMY_DEFAULT_ITEMS.map((name) => {
-    const existing = items?.find((item) => canonicalAutonomyItemName(item.name) === name);
-    return {
-        name,
-        label: name,
-        checked: Boolean(existing?.checked),
-    };
-});
 
 const formatOccupantLabel = (occupant: any, index: number) => {
     const firstName = String(occupant?.firstName || '').trim();
@@ -760,10 +741,7 @@ const buildContextOccupants = (context: any, beneficiary: any) => {
         autonomyDone: Boolean(entry?.autonomyDone ?? (index === 0 ? context?.autonomyDone : false)),
         autonomy: buildAutonomyItems(entry?.autonomy || (index === 0 ? context?.autonomy : undefined)),
         humanHelp: Array.isArray(entry?.humanHelp)
-            ? entry.humanHelp.map((item: any, itemIndex: number) => ({
-                name: AUTONOMY_DEFAULT_ITEMS[itemIndex] || String(item?.name || ''),
-                checked: Boolean(item?.checked),
-            }))
+            ? normalizeAutonomyChecklist(entry.humanHelp)
             : parseHumanHelpItems(beneficiaryOccupants[index]?.homeHelpTxt || ''),
     }));
 

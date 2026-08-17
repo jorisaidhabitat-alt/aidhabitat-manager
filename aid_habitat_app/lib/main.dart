@@ -399,9 +399,6 @@ class _AuthRootState extends State<AuthRoot> {
             _remoteSessionExpired = true;
             _loginNotice = notice;
           });
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted) _showRemoteReauthenticationDialog();
-          });
         });
     _syncSubscription = SyncEngine().stateStream.listen((state) {
       if (!mounted || _currentUser == null) return;
@@ -474,11 +471,6 @@ class _AuthRootState extends State<AuthRoot> {
         _remoteSessionExpired = user != null && notice != null;
         _loginNotice = user == null ? notice : null;
       });
-      if (user != null && notice != null) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) _showRemoteReauthenticationDialog();
-        });
-      }
       // ignore: avoid_print
       print('[auth-root] done. user=${user?.email ?? "(none)"}');
     } catch (e, st) {

@@ -12,4 +12,14 @@ void main() {
       kHouseholdAutonomyItemName,
     );
   });
+
+  test('la désérialisation locale normalise immédiatement le libellé', () {
+    final item = AutonomyItem.fromJson({
+      'name': kLegacyHouseholdAutonomyItemName,
+      'checked': true,
+    });
+
+    expect(item.name, kHouseholdAutonomyItemName);
+    expect(item.checked, isTrue);
+  });
 }

@@ -215,11 +215,11 @@ class AiRewriteService {
     final fragments = <_ProtectedFragment>[];
     for (var index = 0; index < selected.length; index++) {
       final fragment = selected[index];
-      final token = 'AIDHABITAT_DATA_${index.toString().padLeft(3, '0')}';
+      final placeholder = 'AIDHABITAT_DATA_${index.toString().padLeft(3, '0')}';
       buffer
         ..write(source.substring(cursor, fragment.start))
-        ..write(token);
-      fragments.add(fragment.withToken(token));
+        ..write(placeholder);
+      fragments.add(fragment.withToken(placeholder));
       cursor = fragment.end;
     }
     buffer.write(source.substring(cursor));

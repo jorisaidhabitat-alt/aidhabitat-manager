@@ -12,6 +12,12 @@ import {
   buildPasswordCredential,
   parsePasswordCredential,
 } from './passwordCredential.mjs';
+import {
+  AUTONOMY_ITEMS,
+  autonomyChecklistToMap,
+  canonicalAutonomyItemName,
+  normalizeAutonomyChecklist,
+} from '../shared/autonomyContract.js';
 // 2026-05-06 : Vercel Blob entièrement éliminé du flow. Les fonctions
 // `getJson` / `putJson` ne sont plus utilisées — auth-store désormais
 // en RAM (cf. readAuthStore plus bas). On garde l'import storage.mjs
@@ -61,6 +67,7 @@ export const BUNDLED_WIKI_LIBRARY_PATH = path.resolve(SERVER_DIR_PATH, '../data/
 // photo profil (cf. duplicate dans index.mjs).
 export const AUTH_CACHE_TTL_MS = 10_000;
 export const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 7;
+export const REFRESH_SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 90;
 export const ANAH_STATUS_TTL_MS = 60_000;
 export const ANAH_PUBLIC_URL = 'https://www.anah.gouv.fr/';
 export const ANAH_REGISTRATION_URL = 'https://monprojet.anah.gouv.fr/';
@@ -177,24 +184,7 @@ export const FIELD_SETS = {
   wiki: ['uuid_source', 'titre', 'photos', 'photo_base64', 'contenu', 'wiki_tags_id', 'wiki_tags'],
 };
 
-export const AUTONOMY_ITEMS = [
-  'Déplacements/transferts',
-  'Escaliers',
-  'Conduite automobile',
-  'Transports en commun',
-  'Toilette/habillage',
-  'Continence',
-  'Repas (y compris courses)',
-  'Tâches ménagères',
-  'Démarches admin',
-  'Cognition',
-  'Communication',
-];
-
-export const canonicalAutonomyItemName = (value) => {
-  const name = stringValue(value).trim();
-  return name === 'Tâches ménagères.domestiques' ? 'Tâches ménagères' : name;
-};
+export { AUTONOMY_ITEMS, canonicalAutonomyItemName };
 
 export const VISIT_RECOMMENDATION_FIELDS = [
   'uuid_source',
@@ -567,20 +557,11 @@ export const parseChecklistDone = (contextRecord) => {
               weightKg: stringValue(entry?.medical?.weightKg),
             },
             autonomyDone: Boolean(entry?.autonomyDone),
-            autonomy: AUTONOMY_ITEMS.map((name, index) => ({
-              name,
-              checked: Boolean(entry?.autonomy?.[index]?.checked),
-            })),
+            autonomy: normalizeAutonomyChecklist(entry?.autonomy),
             // 3e état autonomie « ! » — fix audit 2026-05-04. Voir
             // index.mjs (parseChecklistDone) pour le rationale.
-            attention: AUTONOMY_ITEMS.map((name, index) => ({
-              name,
-              checked: Boolean(entry?.attention?.[index]?.checked),
-            })),
-            humanHelp: AUTONOMY_ITEMS.map((name, index) => ({
-              name,
-              checked: Boolean(entry?.humanHelp?.[index]?.checked),
-            })),
+            attention: normalizeAutonomyChecklist(entry?.attention),
+            humanHelp: normalizeAutonomyChecklist(entry?.humanHelp),
           }));
         const primary = normalizedOccupants[0];
         const checklist = primary?.autonomy || AUTONOMY_ITEMS.map((name) => ({ name, checked: false }));
@@ -773,7 +754,7 @@ const AUTH_STORE_KEY = 'auth-store.json';
  *     ergo, et l'admin peut toujours les régénérer en remettant le
  *     `mot_de_passe` à blanc dans NocoDB UI).
  *
- * Cache RAM : `memberRegistryCache` (30 s TTL) reste en place — gère
+ * Cache RAM : `memberRegistryCache` (10 s TTL) reste en place — gère
  * la haute fréquence de pulls API sans solliciter NocoDB à chaque
  * requête authentifiée.
  */
@@ -2184,21 +2165,32 @@ export const loadMemberRegistryForAuth = async () => {
   return loadMemberRegistry({ forceRefresh: true });
 };
 
-export const signSessionToken = async (email) => {
-  const { store } = await loadMemberRegistryForAuth();
+const signTypedSessionToken = async (
+  email,
+  { type = 'access', ttlMs = SESSION_TTL_MS } = {},
+) => {
+  // Le login a déjà forcé une lecture fraîche. La signature des deux
+  // jetons réutilise ce cache afin de ne pas relire NocoDB deux fois.
+  const { store } = await loadMemberRegistry();
   const sessionVersion = resolveCredentialSessionVersion(store.users[email], store.secret);
   const payload = {
     email,
-    exp: Date.now() + SESSION_TTL_MS,
+    exp: Date.now() + ttlMs,
     sv: sessionVersion,
+    typ: type,
   };
   const encodedPayload = encodeBase64Url(payload);
   const signature = crypto.createHmac('sha256', store.secret).update(encodedPayload).digest('base64url');
   return `${encodedPayload}.${signature}`;
 };
 
-export const resolveSessionUser = async (req) => {
-  const token = getTokenFromRequest(req);
+export const signSessionToken = (email) => signTypedSessionToken(email);
+export const signRefreshToken = (email) => signTypedSessionToken(email, {
+  type: 'refresh',
+  ttlMs: REFRESH_SESSION_TTL_MS,
+});
+
+const resolveSignedSessionUser = async (token, { expectedType = 'access' } = {}) => {
   if (!token) return null;
 
   // SECURITY 2026-05-15 — Audit P0 #1 : on REJETTE les tokens
@@ -2214,12 +2206,16 @@ export const resolveSessionUser = async (req) => {
   const [encodedPayload, signature] = token.split('.');
   if (!encodedPayload || !signature) return null;
 
-  const { store, members } = await loadMemberRegistryForAuth();
+  // Les endpoints métier absorbent les rafales de synchronisation via le
+  // cache court. Une révocation reste propagée en 10 secondes maximum.
+  const { store, members } = await loadMemberRegistry();
   const expectedSignature = crypto.createHmac('sha256', store.secret).update(encodedPayload).digest('base64url');
   if (!timingSafeStringEqual(signature, expectedSignature)) return null;
 
   const payload = decodeBase64Url(encodedPayload);
   if (!payload?.email || Number(payload.exp) < Date.now()) return null;
+  const tokenType = stringValue(payload.typ) || 'access';
+  if (tokenType !== expectedType) return null;
 
   const email = normalizeEmail(payload.email);
   const currentSv = resolveCredentialSessionVersion(store.users[email], store.secret);
@@ -2228,6 +2224,16 @@ export const resolveSessionUser = async (req) => {
 
   return members.find((member) => member.email === email) || null;
 };
+
+export const resolveSessionUser = async (req) => resolveSignedSessionUser(
+  getTokenFromRequest(req),
+  { expectedType: 'access' },
+);
+
+export const resolveRefreshSessionUser = async (token) => resolveSignedSessionUser(
+  token,
+  { expectedType: 'refresh' },
+);
 
 export const getAdminAccessMembers = async () => {
   const { members, store } = await loadMemberRegistry({ forceRefresh: true });
@@ -2604,10 +2610,7 @@ export const upsertContexte = async (
   const dossierRecord = options.dossierRecord || null;
   const beneficiaryRecordId = options.beneficiaryRecordId ?? null;
 
-  const checklistMap = new Map((autonomy?.checklist || []).map((item) => [
-    canonicalAutonomyItemName(item.name),
-    item.checked,
-  ]));
+  const checklistMap = autonomyChecklistToMap(autonomy?.checklist);
   const normalizedOccupants = Array.isArray(autonomy?.occupants)
     ? autonomy.occupants
       .filter((entry) => entry && typeof entry === 'object')
@@ -2620,20 +2623,11 @@ export const upsertContexte = async (
           weightKg: stringValue(entry?.medical?.weightKg).trim(),
         },
         autonomyDone: Boolean(entry?.autonomyDone),
-        autonomy: AUTONOMY_ITEMS.map((name, index) => ({
-          name,
-          checked: Boolean(entry?.autonomy?.[index]?.checked),
-        })),
+        autonomy: normalizeAutonomyChecklist(entry?.autonomy),
         // 3e état autonomie « ! » — fix audit 2026-05-04 (push vers
         // NocoDB). Voir index.mjs `upsertContexte` pour le rationale.
-        attention: AUTONOMY_ITEMS.map((name, index) => ({
-          name,
-          checked: Boolean(entry?.attention?.[index]?.checked),
-        })),
-        humanHelp: AUTONOMY_ITEMS.map((name, index) => ({
-          name,
-          checked: Boolean(entry?.humanHelp?.[index]?.checked),
-        })),
+        attention: normalizeAutonomyChecklist(entry?.attention),
+        humanHelp: normalizeAutonomyChecklist(entry?.humanHelp),
       }))
     : [];
   // Fix critique 2026-05-15 — PATCH partiel (idem index.mjs version).

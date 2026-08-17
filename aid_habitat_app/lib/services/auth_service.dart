@@ -34,6 +34,8 @@ class AuthService {
   String? _pendingRemotePassword;
   DateTime? _pendingRemoteCredentialExpiresAt;
   Future<bool>? _pendingRemoteLinkAttempt;
+  Future<RemoteLoginResult>? _remoteRefreshAttempt;
+  bool _remoteSessionNeedsRefresh = false;
 
   static const String _bootstrapPasswordBuild = String.fromEnvironment(
     'AIDHABITAT_BOOTSTRAP_PASSWORD',
@@ -69,6 +71,48 @@ class AuthService {
     _pendingRemoteEmail = null;
     _pendingRemotePassword = null;
     _pendingRemoteCredentialExpiresAt = null;
+  }
+
+  Future<void> _persistRemoteSession(
+    RemoteLoginResult result, {
+    bool preserveRefreshWhenMissing = false,
+  }) async {
+    final token = result.token;
+    if (token == null || token.isEmpty) return;
+    await SecureSessionStorage.instance.write(token);
+    final refreshToken = result.refreshToken;
+    if (refreshToken != null && refreshToken.isNotEmpty) {
+      await SecureSessionStorage.instance.writeRefreshToken(refreshToken);
+    } else if (!preserveRefreshWhenMissing) {
+      await SecureSessionStorage.instance.clearRefreshToken();
+    }
+    AppConfig.setAppSessionToken(token);
+    _remoteSessionNeedsRefresh = false;
+  }
+
+  Future<RemoteLoginResult> _attemptRemoteSessionRefresh() {
+    final activeAttempt = _remoteRefreshAttempt;
+    if (activeAttempt != null) return activeAttempt;
+
+    final attempt = _runRemoteSessionRefresh();
+    _remoteRefreshAttempt = attempt;
+    return attempt.whenComplete(() {
+      if (identical(_remoteRefreshAttempt, attempt)) {
+        _remoteRefreshAttempt = null;
+      }
+    });
+  }
+
+  Future<RemoteLoginResult> _runRemoteSessionRefresh() async {
+    final refreshToken = await SecureSessionStorage.instance.readRefreshToken();
+    if (refreshToken == null || refreshToken.isEmpty) {
+      return const RemoteLoginResult.rejected();
+    }
+    final result = await NocodbApiClient().refreshRemoteSession(refreshToken);
+    if (result.isSuccess) {
+      await _persistRemoteSession(result, preserveRefreshWhenMissing: true);
+    }
+    return result;
   }
 
   static String? validatePasswordPolicy(String password) {
@@ -534,11 +578,9 @@ class AuthService {
 
     final now = DateTime.now().toIso8601String();
 
-    // When the server rejects our remote login (password drift between
-    // local and server hashes), fall back to a `local-auth:<base64-email>`
-    // token that the server accepts for members known in the registry.
-    // This keeps NocoDB sync working without forcing a manual password
-    // reset every time the hashes diverge.
+    // Sans serveur, le placeholder `local-auth:` maintient uniquement la
+    // session locale. Il n'est jamais accepté par l'API et ne peut donc pas
+    // donner accès aux données distantes.
     final effectiveToken = remoteToken ?? _buildLocalAuthToken(normalizedEmail);
 
     // Audit sécurité P0 #4 (2026-05-15) : le token de session n'est
@@ -556,8 +598,12 @@ class AuthService {
       'updated_at': now,
     }, conflictAlgorithm: ConflictAlgorithm.replace);
 
-    await SecureSessionStorage.instance.write(effectiveToken);
-    AppConfig.setAppSessionToken(effectiveToken);
+    if (remoteResult.isSuccess) {
+      await _persistRemoteSession(remoteResult);
+    } else {
+      await SecureSessionStorage.instance.write(effectiveToken);
+      AppConfig.setAppSessionToken(effectiveToken);
+    }
 
     final scopes = await _fetchScopesByUserId(db);
     return LocalSignInResult(
@@ -588,8 +634,7 @@ class AuthService {
       'remote_token': '',
       'updated_at': DateTime.now().toIso8601String(),
     }, where: 'id = 1');
-    await SecureSessionStorage.instance.write(token);
-    AppConfig.setAppSessionToken(token);
+    await _persistRemoteSession(result);
     _clearPendingRemoteCredentials();
     return true;
   }
@@ -599,17 +644,29 @@ class AuthService {
   /// dans SQLite ou le secure storage.
   ///
   /// Retourne `true` quand une session serveur utilisable est présente. Un
-  /// rejet explicite invalide la session locale afin de demander proprement
-  /// le mot de passe courant ; une indisponibilité réseau conserve la tentative
-  /// pour le prochain cycle de synchronisation.
-  Future<bool> resumePendingRemoteSession() {
+  /// rejet explicite suspend uniquement la session distante afin de demander
+  /// le mot de passe courant ; la session locale et sa file de synchronisation
+  /// restent intactes. Une indisponibilité réseau conserve silencieusement la
+  /// tentative pour le prochain cycle de synchronisation.
+  Future<bool> resumePendingRemoteSession() async {
+    if (_remoteSessionNeedsRefresh || !AppConfig.hasRemoteConfig) {
+      final refreshResult = await _attemptRemoteSessionRefresh();
+      if (refreshResult.isSuccess) return true;
+      if (refreshResult.isUnreachable) return false;
+      // Aucun renouvellement utilisable : la session locale reste active et
+      // les opérations demeurent en attente jusqu'à une reconnexion manuelle.
+      if (_remoteSessionNeedsRefresh) {
+        await _expireRemoteSessionWithoutLogout();
+      }
+    }
+
     if (AppConfig.hasRemoteConfig) {
       _clearPendingRemoteCredentials();
-      return Future<bool>.value(true);
+      return true;
     }
 
     final activeAttempt = _pendingRemoteLinkAttempt;
-    if (activeAttempt != null) return activeAttempt;
+    if (activeAttempt != null) return await activeAttempt;
 
     final email = _pendingRemoteEmail;
     final password = _pendingRemotePassword;
@@ -619,7 +676,7 @@ class AuthService {
         expiresAt == null ||
         !expiresAt.isAfter(DateTime.now())) {
       _clearPendingRemoteCredentials();
-      return Future<bool>.value(false);
+      return false;
     }
 
     final attempt = _resumePendingRemoteSession(
@@ -627,7 +684,7 @@ class AuthService {
       password: password,
     );
     _pendingRemoteLinkAttempt = attempt;
-    return attempt.whenComplete(() {
+    return await attempt.whenComplete(() {
       if (identical(_pendingRemoteLinkAttempt, attempt)) {
         _pendingRemoteLinkAttempt = null;
       }
@@ -649,15 +706,14 @@ class AuthService {
         'remote_token': '',
         'updated_at': DateTime.now().toIso8601String(),
       }, where: 'id = 1');
-      await SecureSessionStorage.instance.write(token);
-      AppConfig.setAppSessionToken(token);
+      await _persistRemoteSession(result);
       _clearPendingRemoteCredentials();
       return true;
     }
 
     if (result.rejected) {
       _clearPendingRemoteCredentials();
-      await _handleRejectedRemoteSession();
+      await _expireRemoteSessionWithoutLogout();
     }
     return false;
   }
@@ -674,11 +730,11 @@ class AuthService {
   /// l'état « connecté offline » de l'UI (le serveur ne l'honorera pas
   /// — fix P0 #1 — mais l'UI peut afficher les données locales).
   ///
-  /// **Garde-fou audit P0 #1 (2026-05-15)** : si le token chargé est de
-  /// type `local-auth:` et que le serveur est joignable, on le valide
-  /// via `/api/auth/session`. Si le serveur le rejette (401/403), on
-  /// efface la ligne `app_session` + le secure storage pour forcer une
-  /// re-login propre **sans perdre les données locales**.
+  /// **Garde-fou audit P0 #1 (2026-05-15)** : tout jeton chargé est validé
+  /// via `/api/auth/session`. Un serveur indisponible ne modifie rien. Un
+  /// jeton expiré est renouvelé silencieusement ; s'il est réellement
+  /// révoqué, seule l'autorisation distante est retirée. La session locale,
+  /// l'écran courant et les données en attente restent intacts.
   Future<void> restoreRemoteSession() async {
     final db = await _database.database;
     try {
@@ -777,15 +833,15 @@ class AuthService {
     }
 
     if (status == SessionTokenStatus.rejected) {
+      _remoteSessionNeedsRefresh = true;
+      final refreshResult = await _attemptRemoteSessionRefresh();
+      if (refreshResult.isSuccess || refreshResult.isUnreachable) return;
       // ignore: avoid_print
       print(
         '[auth-root] restored token rejected by server — '
         'clearing remote token while preserving local session',
       );
-      await _clearRemoteTokenOnly(db);
-      AppConfig.clearAppSessionToken();
-      _pendingSessionNotice =
-          'Votre session a expiré. Reconnectez-vous pour reprendre la synchronisation.';
+      await _expireRemoteSessionWithoutLogout(db: db, notifyUi: false);
     }
     // valid / unreachable : on garde le token déjà setté.
   }
@@ -812,19 +868,38 @@ class AuthService {
   }
 
   Future<void> _handleRejectedRemoteSession() async {
-    final db = await _database.database;
+    _remoteSessionNeedsRefresh = true;
+    final refreshResult = await _attemptRemoteSessionRefresh();
+    if (refreshResult.isSuccess) {
+      SyncEngine().requestSync();
+      return;
+    }
+    if (refreshResult.isUnreachable) {
+      // Une panne TLS/serveur ne révoque rien : l'utilisateur continue à
+      // travailler et la file réessaiera naturellement au retour du service.
+      return;
+    }
+    await _expireRemoteSessionWithoutLogout();
+  }
+
+  Future<void> _expireRemoteSessionWithoutLogout({
+    Database? db,
+    bool notifyUi = true,
+  }) async {
+    final database = db ?? await _database.database;
     _clearPendingRemoteCredentials();
-    await _clearRemoteTokenOnly(db);
+    await _clearRemoteTokenOnly(database);
     AppConfig.clearAppSessionToken();
-    SyncEngine().stop();
+    _remoteSessionNeedsRefresh = false;
     _pendingSessionNotice =
-        'Votre session a expiré. Reconnectez-vous pour reprendre la synchronisation.';
-    _remoteSessionExpiredController.add(null);
+        'La synchronisation nécessite une reconnexion. Vos saisies locales sont conservées.';
+    if (notifyUi) _remoteSessionExpiredController.add(null);
   }
 
   Future<void> signOut() async {
     final db = await _database.database;
     _clearPendingRemoteCredentials();
+    _remoteSessionNeedsRefresh = false;
     await _clearSessionRowOnly(db);
     AppConfig.clearAppSessionToken();
     // L'iPad interne est offline-first : un logout ne doit pas pouvoir
