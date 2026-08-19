@@ -76,6 +76,55 @@ bool _isEraserProtectedSymbol(PlanTool tool) {
   return _symbolTools.contains(tool) && tool != PlanTool.freeElement;
 }
 
+/// Trace de gomme rattachée au contenu qu'elle a réellement touché.
+/// Les points sont exprimés dans le canvas pour les annotations fixes, et
+/// dans le repère local du symbole pour un élément déplaçable.
+class _PlanErasure {
+  final double size;
+  final List<Offset> points;
+  final bool localToSymbol;
+  final double? symbolWidth;
+  final double? symbolHeight;
+
+  _PlanErasure({
+    required this.size,
+    required this.points,
+    this.localToSymbol = false,
+    this.symbolWidth,
+    this.symbolHeight,
+  });
+
+  Map<String, dynamic> toJson() => {
+    'size': size,
+    'points': points.map((p) => [p.dx, p.dy]).toList(),
+    if (localToSymbol) 'localToSymbol': true,
+    if (symbolWidth != null) 'symbolWidth': symbolWidth,
+    if (symbolHeight != null) 'symbolHeight': symbolHeight,
+  };
+
+  static _PlanErasure? fromJson(Map<String, dynamic> json) {
+    try {
+      final rawPoints = (json['points'] as List?) ?? const [];
+      final points = rawPoints.whereType<List>().map<Offset>((point) {
+        return Offset(
+          (point[0] as num).toDouble(),
+          (point[1] as num).toDouble(),
+        );
+      }).toList();
+      if (points.isEmpty) return null;
+      return _PlanErasure(
+        size: (json['size'] as num?)?.toDouble() ?? _kDefaultEraserSize,
+        points: points,
+        localToSymbol: json['localToSymbol'] == true,
+        symbolWidth: (json['symbolWidth'] as num?)?.toDouble(),
+        symbolHeight: (json['symbolHeight'] as num?)?.toDouble(),
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+}
+
 class _PlanStroke {
   final PlanTool tool;
   final int color; // ARGB
@@ -100,6 +149,10 @@ class _PlanStroke {
   /// Flip visuel sur l'axe Y (mirror haut↔bas).
   bool flipY;
 
+  /// Effacements propres à ce trait ou à ce symbole. Ils ne peuvent donc
+  /// plus masquer un autre élément qui serait déplacé au même endroit.
+  final List<_PlanErasure> erasures;
+
   _PlanStroke({
     required this.tool,
     required this.color,
@@ -108,7 +161,8 @@ class _PlanStroke {
     this.rotation = 0,
     this.flipX = false,
     this.flipY = false,
-  });
+    List<_PlanErasure>? erasures,
+  }) : erasures = erasures ?? <_PlanErasure>[];
 
   Map<String, dynamic> toJson() => {
     'tool': tool.name,
@@ -118,6 +172,8 @@ class _PlanStroke {
     if (rotation != 0) 'rotation': rotation,
     if (flipX) 'flipX': true,
     if (flipY) 'flipY': true,
+    if (erasures.isNotEmpty)
+      'erasures': erasures.map((erasure) => erasure.toJson()).toList(),
   };
 
   static _PlanStroke? fromJson(Map<String, dynamic> json) {
@@ -136,6 +192,11 @@ class _PlanStroke {
       final rotation = (json['rotation'] as num?)?.toDouble() ?? 0.0;
       final flipX = json['flipX'] == true;
       final flipY = json['flipY'] == true;
+      final erasures = ((json['erasures'] as List?) ?? const [])
+          .whereType<Map>()
+          .map((item) => _PlanErasure.fromJson(item.cast<String, dynamic>()))
+          .whereType<_PlanErasure>()
+          .toList();
       return _PlanStroke(
         tool: tool,
         color: color,
@@ -144,6 +205,7 @@ class _PlanStroke {
         rotation: rotation,
         flipX: flipX,
         flipY: flipY,
+        erasures: erasures,
       );
     } catch (_) {
       return null;
@@ -165,6 +227,13 @@ class _PlanStroke {
       height: (halfH * 2).clamp(16, 4000),
     );
   }
+}
+
+class _PendingPlanErasure {
+  final _PlanStroke stroke;
+  final _PlanErasure erasure;
+
+  const _PendingPlanErasure({required this.stroke, required this.erasure});
 }
 
 // ---------------------------------------------------------------------------
@@ -288,6 +357,7 @@ class _PlanCanvasState extends State<PlanCanvas> {
 
   Timer? _saveTimer;
   bool _loaded = false;
+  bool _decodedLegacyErasers = false;
 
   static const List<int> _colorPresets = [
     0xFF111827,
@@ -439,17 +509,209 @@ class _PlanCanvasState extends State<PlanCanvas> {
 
   // ----- Persistence -----
 
+  Rect? _pointsBounds(List<Offset> points) {
+    if (points.isEmpty) return null;
+    var left = points.first.dx;
+    var right = left;
+    var top = points.first.dy;
+    var bottom = top;
+    for (final point in points.skip(1)) {
+      left = math.min(left, point.dx);
+      right = math.max(right, point.dx);
+      top = math.min(top, point.dy);
+      bottom = math.max(bottom, point.dy);
+    }
+    return Rect.fromLTRB(left, top, right, bottom);
+  }
+
+  double _distanceToSegment(Offset point, Offset start, Offset end) {
+    final segment = end - start;
+    final lengthSquared = segment.distanceSquared;
+    if (lengthSquared == 0) return (point - start).distance;
+    final projection =
+        ((point - start).dx * segment.dx + (point - start).dy * segment.dy) /
+        lengthSquared;
+    final closest = start + segment * projection.clamp(0.0, 1.0);
+    return (point - closest).distance;
+  }
+
+  bool _polylinesTouch(
+    List<Offset> first,
+    List<Offset> second,
+    double tolerance,
+  ) {
+    if (first.isEmpty || second.isEmpty) return false;
+    if (first.length == 1 && second.length == 1) {
+      return (first.first - second.first).distance <= tolerance;
+    }
+
+    bool segmentsIntersect(Offset a, Offset b, Offset c, Offset d) {
+      double cross(Offset p, Offset q, Offset r) {
+        return (q.dx - p.dx) * (r.dy - p.dy) - (q.dy - p.dy) * (r.dx - p.dx);
+      }
+
+      final abC = cross(a, b, c);
+      final abD = cross(a, b, d);
+      final cdA = cross(c, d, a);
+      final cdB = cross(c, d, b);
+      final boundsOverlap =
+          math.max(math.min(a.dx, b.dx), math.min(c.dx, d.dx)) <=
+              math.min(math.max(a.dx, b.dx), math.max(c.dx, d.dx)) &&
+          math.max(math.min(a.dy, b.dy), math.min(c.dy, d.dy)) <=
+              math.min(math.max(a.dy, b.dy), math.max(c.dy, d.dy));
+      if (!boundsOverlap) return false;
+      return ((abC <= 0 && abD >= 0) || (abC >= 0 && abD <= 0)) &&
+          ((cdA <= 0 && cdB >= 0) || (cdA >= 0 && cdB <= 0));
+    }
+
+    final firstLine = first.length == 1 ? [first.first, first.first] : first;
+    final secondLine = second.length == 1
+        ? [second.first, second.first]
+        : second;
+    for (var i = 1; i < firstLine.length; i++) {
+      final a = firstLine[i - 1];
+      final b = firstLine[i];
+      for (var j = 1; j < secondLine.length; j++) {
+        final c = secondLine[j - 1];
+        final d = secondLine[j];
+        if (segmentsIntersect(a, b, c, d) ||
+            _distanceToSegment(a, c, d) <= tolerance ||
+            _distanceToSegment(b, c, d) <= tolerance ||
+            _distanceToSegment(c, a, b) <= tolerance ||
+            _distanceToSegment(d, a, b) <= tolerance) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  List<Offset> _rectPerimeter(Rect rect) => [
+    rect.topLeft,
+    rect.topRight,
+    rect.bottomRight,
+    rect.bottomLeft,
+    rect.topLeft,
+  ];
+
+  Offset _pointInSymbolDrawingSpace(_PlanStroke symbol, Offset point) {
+    final center = symbol.points.first;
+    final vector = point - center;
+    final cos = math.cos(-symbol.rotation);
+    final sin = math.sin(-symbol.rotation);
+    var local = Offset(
+      vector.dx * cos - vector.dy * sin,
+      vector.dx * sin + vector.dy * cos,
+    );
+    if (symbol.flipX) local = Offset(-local.dx, local.dy);
+    if (symbol.flipY) local = Offset(local.dx, -local.dy);
+    return local;
+  }
+
+  _PlanErasure? _erasureForStroke(_PlanStroke stroke, _PlanStroke eraser) {
+    if (stroke.tool == PlanTool.eraser ||
+        _isEraserProtectedSymbol(stroke.tool) ||
+        stroke.points.isEmpty ||
+        eraser.points.isEmpty) {
+      return null;
+    }
+
+    if (_symbolTools.contains(stroke.tool)) {
+      final bounds = stroke.symbolLocalBounds;
+      if (bounds == null) return null;
+      final localPoints = eraser.points
+          .map((point) => _pointInSymbolDrawingSpace(stroke, point))
+          .toList();
+      final eraserBounds = _pointsBounds(localPoints);
+      final localSymbolBounds = Rect.fromCenter(
+        center: Offset.zero,
+        width: bounds.width,
+        height: bounds.height,
+      );
+      if (eraserBounds == null ||
+          !eraserBounds
+              .inflate(eraser.size / 2 + stroke.size)
+              .overlaps(localSymbolBounds)) {
+        return null;
+      }
+      if (!_polylinesTouch(
+        localPoints,
+        _rectPerimeter(localSymbolBounds),
+        (eraser.size + stroke.size) / 2,
+      )) {
+        return null;
+      }
+      return _PlanErasure(
+        size: eraser.size,
+        points: localPoints,
+        localToSymbol: true,
+        symbolWidth: bounds.width,
+        symbolHeight: bounds.height,
+      );
+    }
+
+    final strokeBounds = _pointsBounds(stroke.points);
+    final eraserBounds = _pointsBounds(eraser.points);
+    if (strokeBounds == null || eraserBounds == null) return null;
+    final tolerance = (eraser.size + stroke.size) / 2;
+    if (!strokeBounds.inflate(tolerance).overlaps(eraserBounds)) return null;
+    final targetPath = stroke.tool == PlanTool.rect && stroke.points.length >= 2
+        ? _rectPerimeter(Rect.fromPoints(stroke.points[0], stroke.points[1]))
+        : stroke.points;
+    if (!_polylinesTouch(targetPath, eraser.points, tolerance)) return null;
+    return _PlanErasure(
+      size: eraser.size,
+      points: List<Offset>.of(eraser.points),
+    );
+  }
+
+  List<_PendingPlanErasure> _erasuresForTargets(
+    List<_PlanStroke> strokes,
+    _PlanStroke eraser,
+  ) {
+    final pending = <_PendingPlanErasure>[];
+    for (final stroke in strokes) {
+      final erasure = _erasureForStroke(stroke, eraser);
+      if (erasure != null) {
+        pending.add(_PendingPlanErasure(stroke: stroke, erasure: erasure));
+      }
+    }
+    return pending;
+  }
+
+  int _applyEraserToTargets(List<_PlanStroke> strokes, _PlanStroke eraser) {
+    final pending = _erasuresForTargets(strokes, eraser);
+    for (final item in pending) {
+      item.stroke.erasures.add(item.erasure);
+    }
+    return pending.length;
+  }
+
   List<_PlanStroke> _decodeStrokesJson(String? raw) {
     if (raw == null || raw.isEmpty) return const [];
     try {
       final decoded = jsonDecode(raw) as Map<String, dynamic>;
       if (decoded['format'] != 'plan_canvas_v1') return const [];
       final strokes = (decoded['strokes'] as List?) ?? const [];
-      return strokes
+      final parsed = strokes
           .whereType<Map>()
           .map((m) => _PlanStroke.fromJson(m.cast<String, dynamic>()))
           .whereType<_PlanStroke>()
           .toList();
+
+      // Les anciennes gommes étaient des masques absolus du canvas. On les
+      // rattache une fois aux traits déjà présents, puis on ne conserve plus
+      // leur zone globale. Le prochain autosave persiste cette migration.
+      final migrated = <_PlanStroke>[];
+      for (final stroke in parsed) {
+        if (stroke.tool == PlanTool.eraser) {
+          _decodedLegacyErasers = true;
+          _applyEraserToTargets(migrated, stroke);
+        } else {
+          migrated.add(stroke);
+        }
+      }
+      return migrated;
     } catch (_) {
       return const [];
     }
@@ -462,12 +724,14 @@ class _PlanCanvasState extends State<PlanCanvas> {
       pageNumber: widget.pageNumber,
     );
     if (!mounted) return;
+    _decodedLegacyErasers = false;
     _strokes
       ..clear()
       ..addAll(_decodeStrokesJson(json));
     if (!mounted) return;
     setState(() => _loaded = true);
-    if (widget.refreshPreviewOnLoad && _strokes.isNotEmpty) {
+    if ((_decodedLegacyErasers || widget.refreshPreviewOnLoad) &&
+        _strokes.isNotEmpty) {
       // Refresh the preview after loading a seeded page so report generation
       // sees the copied editable drawing even if the user does not redraw.
       _scheduleSave();
@@ -642,6 +906,26 @@ class _PlanCanvasState extends State<PlanCanvas> {
     if (!_freehandTools.contains(cur.tool) && cur.points.length < 2) {
       cur.points.add(cur.points.first.translate(60, 40));
     }
+
+    if (cur.tool == PlanTool.eraser) {
+      final pending = _erasuresForTargets(_strokes, cur);
+      if (pending.isEmpty) {
+        setState(() => _current = null);
+        return;
+      }
+      _pushUndo();
+      setState(() {
+        for (final item in pending) {
+          item.stroke.erasures.add(item.erasure);
+        }
+        _current = null;
+        _selectedIndex = -1;
+        _editingMode = false;
+      });
+      _scheduleSave();
+      return;
+    }
+
     _pushUndo();
     setState(() {
       _strokes.add(cur);
@@ -1919,15 +2203,14 @@ class _PlanCanvasState extends State<PlanCanvas> {
     _activeCanvasPointerKind = event.kind;
     _canvasPointerDown = pt;
     _canvasPointerMoved = false;
-    _canvasPointerDownSymbolIndex = _symbolIndexAt(
-      pt,
-      hitPadding: _kSymbolHitPadding,
-    );
+    _canvasPointerDownSymbolIndex = _tool == PlanTool.eraser
+        ? -1
+        : _symbolIndexAt(pt, hitPadding: _kSymbolHitPadding);
     _canvasPointerMaxDistanceSquared = 0;
 
     // Mode édition : les poignées ont priorité (resize / rotation /
     // déplacement depuis le body).
-    if (_selectedIndex >= 0 && _editingMode) {
+    if (_tool != PlanTool.eraser && _selectedIndex >= 0 && _editingMode) {
       final sel = _strokes[_selectedIndex];
       final h = _handleAt(sel, pt);
       if (h != null) {
@@ -1967,6 +2250,15 @@ class _PlanCanvasState extends State<PlanCanvas> {
     if (_activeHandle != null) {
       _finishSymbolGesture();
       _scheduleSave();
+      _resetCanvasPointer();
+      return;
+    }
+
+    // La gomme a toujours priorité sur la sélection/manipulation des
+    // symboles. Un simple tap produit aussi un point de gomme.
+    if (_tool == PlanTool.eraser) {
+      _updateStrokeAt(event.localPosition);
+      _finishCurrentStroke();
       _resetCanvasPointer();
       return;
     }
@@ -2349,7 +2641,7 @@ class _DrawPainter extends CustomPainter {
     // Couche 1 : équipements protégés.
     for (final s in strokes) {
       if (!_isEraserProtectedSymbol(s.tool)) continue;
-      _paintOne(canvas, s);
+      _paintOneWithErasures(canvas, s, drawBounds);
     }
     if (current != null && _isEraserProtectedSymbol(current.tool)) {
       _paintOne(canvas, current);
@@ -2360,12 +2652,86 @@ class _DrawPainter extends CustomPainter {
     canvas.saveLayer(drawBounds, Paint());
     for (final s in strokes) {
       if (_isEraserProtectedSymbol(s.tool)) continue;
-      _paintOne(canvas, s);
+      _paintOneWithErasures(canvas, s, drawBounds);
     }
     if (current != null && !_isEraserProtectedSymbol(current.tool)) {
       _paintOne(canvas, current);
     }
     canvas.restore();
+  }
+
+  static void _paintOneWithErasures(
+    Canvas canvas,
+    _PlanStroke stroke,
+    Rect drawBounds,
+  ) {
+    if (stroke.erasures.isEmpty) {
+      _paintOne(canvas, stroke);
+      return;
+    }
+
+    // Chaque trait est isolé dans sa propre couche. Une gomme rattachée à
+    // ce trait ne peut donc jamais masquer les autres objets du plan.
+    canvas.saveLayer(drawBounds, Paint());
+    _paintOne(canvas, stroke);
+    for (final erasure in stroke.erasures) {
+      if (erasure.localToSymbol && _symbolTools.contains(stroke.tool)) {
+        final center = stroke.points.first;
+        final bounds = stroke.symbolLocalBounds;
+        canvas.save();
+        canvas.translate(center.dx, center.dy);
+        canvas.rotate(stroke.rotation);
+        if (stroke.flipX || stroke.flipY) {
+          canvas.scale(stroke.flipX ? -1.0 : 1.0, stroke.flipY ? -1.0 : 1.0);
+        }
+        if (bounds != null &&
+            erasure.symbolWidth != null &&
+            erasure.symbolHeight != null &&
+            erasure.symbolWidth! > 0 &&
+            erasure.symbolHeight! > 0) {
+          canvas.scale(
+            bounds.width / erasure.symbolWidth!,
+            bounds.height / erasure.symbolHeight!,
+          );
+        }
+        _paintErasure(canvas, erasure.points, erasure.size);
+        canvas.restore();
+      } else {
+        _paintErasure(canvas, erasure.points, erasure.size);
+      }
+    }
+    canvas.restore();
+  }
+
+  static void _paintErasure(Canvas canvas, List<Offset> points, double size) {
+    if (points.isEmpty) return;
+    final paint = Paint()
+      ..blendMode = BlendMode.dstOut
+      ..color = Colors.black
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = size;
+    if (points.length == 1) {
+      canvas.drawCircle(
+        points.first,
+        size / 2,
+        paint..style = PaintingStyle.fill,
+      );
+      return;
+    }
+    final path = Path()..moveTo(points.first.dx, points.first.dy);
+    for (var i = 1; i < points.length; i++) {
+      final previous = points[i - 1];
+      final point = points[i];
+      final middle = Offset(
+        (previous.dx + point.dx) / 2,
+        (previous.dy + point.dy) / 2,
+      );
+      path.quadraticBezierTo(previous.dx, previous.dy, middle.dx, middle.dy);
+    }
+    path.lineTo(points.last.dx, points.last.dy);
+    canvas.drawPath(path, paint);
   }
 
   static void _paintOne(Canvas canvas, _PlanStroke s) {

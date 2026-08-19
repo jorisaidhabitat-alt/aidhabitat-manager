@@ -322,6 +322,21 @@ class DataService {
     return PrincipalRetirementFundCache.instance.readNames();
   }
 
+  /// Refreshes the complete principal retirement-fund reference and stores it
+  /// locally. The dedicated screen needs the phone and logo in addition to the
+  /// names used by the visit-report picker.
+  Future<bool> refreshPrincipalRetirementFundsFromRemote() async {
+    try {
+      final remoteFunds = await _nocodbApiClient
+          .fetchPrincipalRetirementFunds();
+      if (remoteFunds.isEmpty) return false;
+      await PrincipalRetirementFundCache.instance.write(remoteFunds);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<bool> refreshRetirementFundsFromRemote() async {
     try {
       final remoteFunds = await _nocodbApiClient.fetchRetirementFunds();
@@ -948,7 +963,7 @@ class DataService {
         refreshLocalAuthStateFromRemote(),
         refreshWikiItemsFromRemote(),
         refreshRetirementFundsFromRemote(),
-        fetchPrincipalRetirementFundNames(),
+        refreshPrincipalRetirementFundsFromRemote(),
       ]);
 
       // Précharge aussi les tables structurées qui ne font pas partie du

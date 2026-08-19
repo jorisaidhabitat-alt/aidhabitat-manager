@@ -1052,6 +1052,8 @@ class _VisitReportScreenState extends State<VisitReportScreen>
                   final tabKey = layer.tabKey;
                   final liveKey = '${_dossier.patient.id}::$tabKey';
                   final isMedical = tabKey == 'Contexte de vie-Médical';
+                  final hasSharedContextText =
+                      isMedical || tabKey == 'Contexte de vie-Autonomie';
                   final isActive = tabKey == activeTabKey;
                   final pdfPlaceholder = _resolvePlaceholderForTabKey(tabKey);
                   // Bannière titre 2026-05-15 : auparavant le libellé PDF
@@ -1103,10 +1105,11 @@ class _VisitReportScreenState extends State<VisitReportScreen>
                             // local/remote, ce qui permet une suppression avec
                             // renumérotation logique (1, 2, 3 -> 1, 2).
                             totalPages: 1,
-                            // Médical : le texte "Environnement" est unique
-                            // pour les 3 pages. Seuls les dessins/repères de
-                            // page restent distincts.
-                            sharedText: isMedical,
+                            // Contexte de vie : les textes "Environnement" et
+                            // "Habitudes de vie" restent uniques. Ajouter une
+                            // page crée seulement un nouveau dessin, jamais une
+                            // nouvelle note écrite.
+                            sharedText: hasSharedContextText,
                             backgroundContent: isMedical
                                 ? _MedicalPageNumberBadge(
                                     currentPage: _medicalCurrentPage,

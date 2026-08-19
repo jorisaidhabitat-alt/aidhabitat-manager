@@ -810,6 +810,88 @@ class DocumentRepository {
     SyncEngine().notify();
   }
 
+  /// Remplace le contenu d'un document par de nouveaux bytes en conservant
+  /// son identifiant. Utilisé notamment après une rotation : l'aperçu local
+  /// est actualisé immédiatement, puis la même version est poussée en fond.
+  Future<void> enqueueReplacementBytes({
+    required String documentId,
+    required Uint8List bytes,
+    required String fileName,
+    required String mimeType,
+  }) async {
+    final db = await _database.database;
+    final rows = await db.query(
+      'documents',
+      where: 'local_id = ?',
+      whereArgs: [documentId],
+      limit: 1,
+    );
+    if (rows.isEmpty) return;
+    final row = rows.first;
+    final patientId = row['patient_local_id'] as String;
+    final title = row['title'] as String? ?? 'Document';
+    final tags = (jsonDecode(row['tags_json'] as String? ?? '[]') as List)
+        .cast<String>();
+    final extension = p.extension(fileName).replaceFirst('.', '').toLowerCase();
+    final dataUrl = 'data:$mimeType;base64,${base64Encode(bytes)}';
+    final now = DateTime.now().toIso8601String();
+    String? localPath = row['local_file_path'] as String?;
+    if (!kIsWeb && localPath != null && localPath.isNotEmpty) {
+      await NativeFileProtection.instance.writeProtectedBytes(localPath, bytes);
+    } else {
+      localPath = null;
+    }
+
+    await db.delete(
+      'sync_operations',
+      where: 'entity_local_id = ? AND entity_type = ? AND status IN (?, ?)',
+      whereArgs: [
+        documentId,
+        'document',
+        SyncOperationStatus.pending.name,
+        SyncOperationStatus.failed.name,
+      ],
+    );
+    await db.update(
+      'documents',
+      {
+        'local_file_data_url': await OfflineVault.instance.sealString(dataUrl),
+        'file_ext': extension,
+        'mime_type': mimeType,
+        'file_name': fileName,
+        'sync_state': SyncState.pendingSync.name,
+        'updated_at': now,
+      },
+      where: 'local_id = ?',
+      whereArgs: [documentId],
+    );
+    await db.insert('sync_operations', {
+      'id':
+          'sync_replace_${documentId}_${DateTime.now().microsecondsSinceEpoch}',
+      'entity_type': 'document',
+      'entity_local_id': documentId,
+      'operation_type': 'upload_file',
+      'payload_json': await OfflineVault.instance.sealString(
+        jsonEncode({
+          'patientLocalId': patientId,
+          'documentLocalId': documentId,
+          if (localPath != null) 'localPath': localPath else 'dataUrl': dataUrl,
+          'title': title,
+          'fileName': fileName,
+          'mimeType': mimeType,
+          'tags': tags,
+        }),
+      ),
+      'status': SyncOperationStatus.pending.name,
+      'attempt_count': 0,
+      'last_error': null,
+      'created_at': now,
+      'updated_at': now,
+    });
+    SyncEngine().notify();
+    _notifyChanged(patientId: patientId, reason: 'replace_file');
+  }
+
   /// Re-upload d'un document existant avec le même `documentLocalId` et un
   /// fichier "flattened" (image + annotations aplaties). Le serveur remplace
   /// l'asset existant sur dedup par `documentLocalId`. Appelé après un save

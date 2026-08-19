@@ -85,19 +85,18 @@ class _RetirementFundsCombinedScreenState
               ],
             ),
             const SizedBox(height: 16),
-            // ---- Contenu : écran embarqué (sans son propre header) ----
-            // Le KeyedSubtree garantit qu'on rebuild un widget différent
-            // (donc nouveau state, nouveau fetch) à chaque bascule.
+            // ---- Contenu : écrans embarqués (sans leur propre header) ----
+            // Les deux référentiels restent montés. Une bascule hors ligne ne
+            // recrée donc pas la page principale et ne déclenche pas un nouvel
+            // état de chargement dépendant du réseau.
             Expanded(
-              child: _mode == _CaisseMode.complementaires
-                  ? const KeyedSubtree(
-                      key: ValueKey('complementaires'),
-                      child: RetirementFundsScreen(showHeader: false),
-                    )
-                  : const KeyedSubtree(
-                      key: ValueKey('principales'),
-                      child: RetirementFundsPrincipalScreen(showHeader: false),
-                    ),
+              child: IndexedStack(
+                index: _mode == _CaisseMode.complementaires ? 0 : 1,
+                children: const [
+                  RetirementFundsScreen(showHeader: false),
+                  RetirementFundsPrincipalScreen(showHeader: false),
+                ],
+              ),
             ),
           ],
         ),

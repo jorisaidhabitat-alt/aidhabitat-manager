@@ -11,8 +11,11 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:image/image.dart' as img;
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:open_filex/open_filex.dart';
+import 'package:pdf/pdf.dart' show PdfPageFormat;
+import 'package:pdf/widgets.dart' as pw;
 import 'package:pdfx/pdfx.dart';
 import 'package:share_plus/share_plus.dart';
 
@@ -899,30 +902,27 @@ class _DocumentsScreenState extends State<DocumentsScreen>
     if (_selectedIds.isEmpty) return;
     setState(() => _isBulkDownloading = true);
     try {
+      if (kIsWeb) {
+        for (final doc in _selectedDocuments) {
+          await _downloadDocument(doc);
+        }
+        if (mounted) _exitSelectionMode();
+        return;
+      }
       final xFiles = <XFile>[];
-      for (final id in _selectedIds.toList()) {
-        final doc = _documents.firstWhere(
-          (d) => d.id == id,
-          orElse: () => DocItem(
-            id: '',
-            type: 'doc',
-            name: '',
-            title: '',
-            date: '',
-            tags: const [],
-            syncState: SyncState.synced,
-          ),
-        );
-        if (doc.id.isEmpty) continue;
-        final path = doc.localPath;
-        if (path == null || path.isEmpty) continue;
-        if (!await File(path).exists()) continue;
+      for (final doc in _selectedDocuments) {
+        final bytes = await _resolveDocumentBytes(doc);
+        if (bytes == null) continue;
         xFiles.add(
-          XFile(path, name: doc.name.isNotEmpty ? doc.name : doc.title),
+          XFile.fromData(
+            bytes,
+            name: doc.name.isNotEmpty ? doc.name : '${doc.title}.bin',
+            mimeType: _mimeTypeFor(doc),
+          ),
         );
       }
       if (xFiles.isEmpty) {
-        _showError('Aucun fichier local dans la sélection.');
+        _showError('Aucun fichier disponible dans la sélection.');
         return;
       }
       // iOS/Android native share sheet: one tap, user picks destination.
@@ -932,6 +932,106 @@ class _DocumentsScreenState extends State<DocumentsScreen>
       _showError('Partage impossible : $err');
     } finally {
       if (mounted) setState(() => _isBulkDownloading = false);
+    }
+  }
+
+  List<DocItem> get _selectedDocuments => _documents
+      .where((document) => _selectedIds.contains(document.id))
+      .toList(growable: false);
+
+  Future<void> _bulkShare() async {
+    final selected = _selectedDocuments;
+    if (selected.isEmpty) return;
+    setState(() => _isBulkDownloading = true);
+    try {
+      final files = <XFile>[];
+      for (final doc in selected) {
+        final bytes = await _resolveDocumentBytes(doc);
+        if (bytes == null) continue;
+        files.add(
+          XFile.fromData(
+            bytes,
+            name: doc.name.isNotEmpty ? doc.name : '${doc.title}.bin',
+            mimeType: _mimeTypeFor(doc),
+          ),
+        );
+      }
+      if (files.isEmpty) {
+        _showError('Aucun fichier disponible dans la sélection.');
+        return;
+      }
+      if (!mounted) return;
+      final box = context.findRenderObject() as RenderBox?;
+      final origin = box == null
+          ? const Rect.fromLTWH(0, 0, 1, 1)
+          : box.localToGlobal(Offset.zero) & box.size;
+      await Share.shareXFiles(
+        files,
+        subject: '${files.length} document${files.length > 1 ? 's' : ''}',
+        sharePositionOrigin: origin,
+      );
+      if (mounted) _exitSelectionMode();
+    } catch (err) {
+      _showError('Partage impossible : $err');
+    } finally {
+      if (mounted) setState(() => _isBulkDownloading = false);
+    }
+  }
+
+  Future<void> _bulkDuplicate() async {
+    final selected = _selectedDocuments;
+    if (selected.isEmpty || _isImporting) return;
+    setState(() => _isImporting = true);
+    var duplicated = 0;
+    try {
+      for (final doc in selected) {
+        final bytes = await _resolveDocumentBytes(doc);
+        if (bytes == null) continue;
+        final duplicate = await _documentRepository.importDocumentBytes(
+          patientId: _patientId,
+          bytes: bytes,
+          fileName: _duplicateFileName(doc.name),
+          tags: doc.tags,
+          title: '${doc.title} - copie',
+        );
+        await _documentRepository.copyDocumentAnnotations(
+          sourceDocumentId: doc.id,
+          targetDocumentId: duplicate.id,
+        );
+        duplicated++;
+      }
+      if (!mounted) return;
+      _exitSelectionMode();
+      await _loadDocuments(silent: true, refreshRemote: false);
+      if (mounted) {
+        _showSnack(
+          '$duplicated document${duplicated > 1 ? 's dupliqués' : ' dupliqué'}.',
+        );
+      }
+    } catch (err) {
+      _showError('Duplication impossible : $err');
+    } finally {
+      if (mounted) setState(() => _isImporting = false);
+    }
+  }
+
+  Future<void> _handleBulkAction(String action) async {
+    final selected = _selectedDocuments;
+    if (selected.isEmpty) return;
+    switch (action) {
+      case 'download':
+        await _bulkDownload();
+      case 'rename':
+        if (selected.length == 1) {
+          await _showRenameDialog(selected.single);
+          if (mounted) _exitSelectionMode();
+        }
+      case 'share':
+        await _bulkShare();
+      case 'duplicate':
+        await _bulkDuplicate();
+      case 'delete':
+        await _bulkDelete();
     }
   }
 
@@ -1395,6 +1495,69 @@ class _DocumentsScreenState extends State<DocumentsScreen>
               onTap: allSelected ? _exitSelectionMode : _selectAll,
               color: kBrandDarkPurple,
               background: Colors.transparent,
+            ),
+            const SizedBox(width: 6),
+            PopupMenuButton<String>(
+              tooltip: 'Actions sur la sélection',
+              enabled: _selectedIds.isNotEmpty,
+              onSelected: _handleBulkAction,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              itemBuilder: (context) => [
+                const PopupMenuItem(
+                  value: 'download',
+                  child: _SelectionActionLabel(
+                    icon: LucideIcons.download,
+                    label: 'Télécharger',
+                  ),
+                ),
+                PopupMenuItem(
+                  value: 'rename',
+                  enabled: _selectedIds.length == 1,
+                  child: const _SelectionActionLabel(
+                    icon: LucideIcons.pencil,
+                    label: 'Renommer',
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: 'share',
+                  child: _SelectionActionLabel(
+                    icon: LucideIcons.share2,
+                    label: 'Partager',
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: 'duplicate',
+                  child: _SelectionActionLabel(
+                    icon: LucideIcons.copy,
+                    label: 'Dupliquer',
+                  ),
+                ),
+                const PopupMenuDivider(),
+                const PopupMenuItem(
+                  value: 'delete',
+                  child: _SelectionActionLabel(
+                    icon: LucideIcons.trash2,
+                    label: 'Supprimer',
+                    color: Colors.red,
+                  ),
+                ),
+              ],
+              child: Container(
+                width: 36,
+                height: 36,
+                alignment: Alignment.center,
+                decoration: const BoxDecoration(
+                  color: kBrandDarkPurple,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  LucideIcons.moreVertical,
+                  size: 18,
+                  color: Colors.white,
+                ),
+              ),
             ),
             const SizedBox(width: 6),
             _CompactToolbarButton(
@@ -2016,6 +2179,29 @@ class _CompactToolbarButton extends StatelessWidget {
   }
 }
 
+class _SelectionActionLabel extends StatelessWidget {
+  const _SelectionActionLabel({
+    required this.icon,
+    required this.label,
+    this.color = kBrandDarkPurple,
+  });
+
+  final IconData icon;
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(icon, size: 16, color: color),
+        const SizedBox(width: 10),
+        Text(label, style: TextStyle(color: color)),
+      ],
+    );
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Empty state
 // ---------------------------------------------------------------------------
@@ -2233,6 +2419,8 @@ class _PreviewScreenState extends State<_PreviewScreen> {
   // cet état local, le badge "Modifié" et le prompt unsaved-changes
   // persisteraient même après une sauvegarde réussie.
   late String _savedTitle;
+  int _rotationQuarterTurns = 0;
+  int _savedRotationQuarterTurns = 0;
 
   bool get _hasUnsavedTitle =>
       _titleCtrl.text.trim() != _savedTitle &&
@@ -2253,7 +2441,11 @@ class _PreviewScreenState extends State<_PreviewScreen> {
     return _annotatorKey.currentState?.hasUnsavedChanges ?? false;
   }
 
-  bool get _hasAnyUnsaved => _hasUnsavedTitle || _hasUnsavedAnnotation;
+  bool get _hasUnsavedRotation =>
+      _rotationQuarterTurns != _savedRotationQuarterTurns;
+
+  bool get _hasAnyUnsaved =>
+      _hasUnsavedTitle || _hasUnsavedAnnotation || _hasUnsavedRotation;
 
   @override
   void initState() {
@@ -2316,10 +2508,145 @@ class _PreviewScreenState extends State<_PreviewScreen> {
           await _reuploadFlattenedImage();
         }
       }
+      if (_hasUnsavedRotation) {
+        await _saveRotation();
+        _savedRotationQuarterTurns = _rotationQuarterTurns;
+      }
       if (mounted) setState(() {});
+    } catch (err) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Enregistrement impossible : $err')),
+        );
+      }
     } finally {
       if (mounted) setState(() => _saving = false);
     }
+  }
+
+  void _rotateClockwise() {
+    setState(() {
+      _rotationQuarterTurns = (_rotationQuarterTurns + 1) % 4;
+    });
+  }
+
+  Future<Uint8List?> _sourceBytes() async {
+    final dataUrl = widget.doc.dataUrl;
+    if (dataUrl != null && dataUrl.isNotEmpty) {
+      final comma = dataUrl.indexOf(',');
+      if (comma > 0) return base64Decode(dataUrl.substring(comma + 1));
+    }
+    final path = widget.doc.localPath?.trim() ?? '';
+    if (!kIsWeb && path.isNotEmpty && await File(path).exists()) {
+      return File(path).readAsBytes();
+    }
+    final url = widget.doc.url?.trim() ?? '';
+    if (url.isEmpty) return null;
+    if (kIsWeb) {
+      return MediaCacheService.instance.webCachedFetch(
+        url,
+        headers: MediaCacheService.authHeaders(),
+      );
+    }
+    final cached = await MediaCacheService.instance.fetch(
+      url,
+      headers: MediaCacheService.authHeaders(),
+    );
+    return cached?.readAsBytes();
+  }
+
+  Future<void> _saveRotation() async {
+    final delta = (_rotationQuarterTurns - _savedRotationQuarterTurns) % 4;
+    if (delta == 0) return;
+    final source = await _sourceBytes();
+    if (source == null || source.isEmpty) {
+      throw StateError('fichier indisponible');
+    }
+
+    if (_looksLikePdf()) {
+      final rotated = await _rotatePdf(source, delta);
+      final original = widget.doc.name.trim().isEmpty
+          ? '${widget.doc.title}.pdf'
+          : widget.doc.name;
+      final fileName = original.toLowerCase().endsWith('.pdf')
+          ? original
+          : '$original.pdf';
+      await DocumentRepository().enqueueReplacementBytes(
+        documentId: widget.doc.id,
+        bytes: rotated,
+        fileName: fileName,
+        mimeType: 'application/pdf',
+      );
+      return;
+    }
+
+    Uint8List imageSource = source;
+    final annotator = _annotatorKey.currentState;
+    if (annotator != null) {
+      imageSource = await annotator.exportFlatPng() ?? source;
+    }
+    final decoded = img.decodeImage(imageSource);
+    if (decoded == null) throw StateError('format image non reconnu');
+    final rotated = img.copyRotate(decoded, angle: delta * 90);
+    final bytes = Uint8List.fromList(img.encodePng(rotated));
+    final originalName = widget.doc.name.trim().isEmpty
+        ? widget.doc.title
+        : widget.doc.name;
+    final dot = originalName.lastIndexOf('.');
+    final base = dot > 0 ? originalName.substring(0, dot) : originalName;
+    await DocumentRepository().enqueueReplacementBytes(
+      documentId: widget.doc.id,
+      bytes: bytes,
+      fileName: '$base.png',
+      mimeType: 'image/png',
+    );
+  }
+
+  Future<Uint8List> _rotatePdf(Uint8List source, int quarterTurns) async {
+    final sourcePdf = await PdfDocument.openData(source);
+    final output = pw.Document();
+    try {
+      for (
+        var pageNumber = 1;
+        pageNumber <= sourcePdf.pagesCount;
+        pageNumber++
+      ) {
+        final page = await sourcePdf.getPage(pageNumber);
+        try {
+          final rendered = await page.render(
+            width: page.width * 2,
+            height: page.height * 2,
+            format: PdfPageImageFormat.png,
+          );
+          if (rendered == null) continue;
+          final decoded = img.decodeImage(rendered.bytes);
+          if (decoded == null) continue;
+          final rotated = img.copyRotate(decoded, angle: quarterTurns * 90);
+          final png = Uint8List.fromList(img.encodePng(rotated));
+          final format = PdfPageFormat(
+            rotated.width.toDouble(),
+            rotated.height.toDouble(),
+            marginAll: 0,
+          );
+          output.addPage(
+            pw.Page(
+              pageFormat: format,
+              build: (_) => pw.Image(
+                pw.MemoryImage(png),
+                width: format.width,
+                height: format.height,
+                fit: pw.BoxFit.fill,
+              ),
+            ),
+          );
+        } finally {
+          await page.close();
+        }
+      }
+    } finally {
+      await sourcePdf.close();
+    }
+    return Uint8List.fromList(await output.save());
   }
 
   /// Produit un PNG aplati (image originale + strokes) et l'enqueue comme
@@ -2470,7 +2797,12 @@ class _PreviewScreenState extends State<_PreviewScreen> {
                   child: Column(
                     children: [
                       _buildToolbar(),
-                      Expanded(child: _buildPreviewBody()),
+                      Expanded(
+                        child: RotatedBox(
+                          quarterTurns: _rotationQuarterTurns,
+                          child: _buildPreviewBody(),
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -2540,6 +2872,12 @@ class _PreviewScreenState extends State<_PreviewScreen> {
             ),
           ),
           const SizedBox(width: 8),
+          _TopbarButton(
+            icon: LucideIcons.rotateCw,
+            tooltip: 'Tourner de 90°',
+            onPressed: _rotateClockwise,
+          ),
+          const SizedBox(width: 4),
           _TopbarButton(
             icon: LucideIcons.download,
             tooltip: 'Télécharger',

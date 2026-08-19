@@ -49,6 +49,9 @@ dependencies:
   # 1600px de large → photo passe de 2-3 MB à 200-400 KB sans perte
   # visible. Demande utilisateur 2026-05-07 : sync Mac→iPad < 3s.
   image: ^4.5.4
+  # Reconstruction des PDF après rotation de leurs pages dans l'espace
+  # Documents. Le PDF reste un PDF multipage et peut ensuite être synchronisé.
+  pdf: ^3.11.3
   path: ^1.9.1
   path_provider: ^2.1.5
   sqflite: ^2.4.2

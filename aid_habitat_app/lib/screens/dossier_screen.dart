@@ -478,9 +478,15 @@ class _DossierScreenState extends State<DossierScreen> {
 
   Widget _buildVisitDateButton(BuildContext context) {
     final parsed = parseVisitDateTime(_visitDate);
+    final hasTime = RegExp(
+      r'[T ]\d{2}:\d{2}',
+    ).hasMatch(_visitDate?.trim() ?? '');
     final label = parsed == null
         ? 'À planifier'
-        : DateFormat('dd/MM/yyyy', 'fr_FR').format(parsed);
+        : DateFormat(
+            hasTime ? 'dd/MM/yyyy • HH:mm' : 'dd/MM/yyyy',
+            'fr_FR',
+          ).format(parsed);
 
     return Tooltip(
       message: 'Modifier la date de visite',
@@ -543,18 +549,45 @@ class _DossierScreenState extends State<DossierScreen> {
     final previousValue = _visitDate;
     final now = DateTime.now();
     final initial = parseVisitDateTime(previousValue) ?? now;
-    final picked = await showDatePicker(
+    final pickedDate = await showDatePicker(
       context: context,
       initialDate: initial,
       firstDate: DateTime(2000),
       lastDate: DateTime(now.year + 10, 12, 31),
       helpText: 'DATE DE VISITE',
       cancelText: 'Annuler',
-      confirmText: 'Valider',
+      confirmText: 'Suivant',
     );
-    if (picked == null || !mounted) return;
+    if (pickedDate == null || !mounted) return;
 
-    final nextValue = DateFormat('yyyy-MM-dd').format(picked);
+    final previousHasTime = RegExp(
+      r'[T ]\d{2}:\d{2}',
+    ).hasMatch(previousValue?.trim() ?? '');
+    final initialTime = previousHasTime
+        ? TimeOfDay.fromDateTime(initial)
+        : TimeOfDay.now();
+    final pickedTime = await showTimePicker(
+      context: context,
+      initialTime: initialTime,
+      helpText: 'HEURE DE VISITE',
+      cancelText: 'Annuler',
+      confirmText: 'Valider',
+      builder: (context, child) => MediaQuery(
+        data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: true),
+        child: child!,
+      ),
+    );
+    if (pickedTime == null || !mounted) return;
+
+    final nextValue = DateFormat("yyyy-MM-dd'T'HH:mm:ss").format(
+      DateTime(
+        pickedDate.year,
+        pickedDate.month,
+        pickedDate.day,
+        pickedTime.hour,
+        pickedTime.minute,
+      ),
+    );
     if (nextValue == previousValue) return;
 
     setState(() => _visitDate = nextValue);

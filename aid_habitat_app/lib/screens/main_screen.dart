@@ -113,6 +113,8 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     _dataService.refreshWikiItemsFromRemote();
     // ignore: discarded_futures
     _dataService.refreshRetirementFundsFromRemote();
+    // ignore: discarded_futures
+    _dataService.refreshPrincipalRetirementFundsFromRemote();
     _loadData();
   }
 

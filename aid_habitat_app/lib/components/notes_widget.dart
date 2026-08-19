@@ -203,7 +203,7 @@ class NotesWidget extends StatefulWidget {
     this.stackedTextFraction,
     this.attachedToTitleBanner = false,
     this.borderlessTextEditor = false,
-    this.focusOnTapAnywhere = false,
+    this.focusOnTapAnywhere = true,
     this.canvasSlideIndex,
     this.showCanvasTopDivider = true,
   });
@@ -4603,13 +4603,7 @@ class _FloatingTextModalState extends State<_FloatingTextModal>
                     Expanded(
                       child: Stack(
                         children: [
-                          Padding(
-                            padding: EdgeInsets.fromLTRB(
-                              14,
-                              14,
-                              VoiceDictationButton.isSupported ? 56 : 14,
-                              14,
-                            ),
+                          Positioned.fill(
                             child: TextField(
                               controller: _controller,
                               focusNode: _focusNode,
@@ -4627,9 +4621,20 @@ class _FloatingTextModalState extends State<_FloatingTextModal>
                               smartDashesType: SmartDashesType.disabled,
                               smartQuotesType: SmartQuotesType.disabled,
                               readOnly: _isVoiceDictating,
-                              decoration: _noteTextDecoration(
-                                widget.placeholder,
-                              ),
+                              decoration:
+                                  _noteTextDecoration(
+                                    widget.placeholder,
+                                  ).copyWith(
+                                    isCollapsed: false,
+                                    contentPadding: EdgeInsets.fromLTRB(
+                                      14,
+                                      14,
+                                      VoiceDictationButton.isSupported
+                                          ? 56
+                                          : 14,
+                                      14,
+                                    ),
+                                  ),
                             ),
                           ),
                           if (VoiceDictationButton.isSupported)

@@ -410,13 +410,7 @@ class _NoteWindowScreenState extends State<NoteWindowScreen>
               Expanded(
                 child: Stack(
                   children: [
-                    Padding(
-                      padding: EdgeInsets.fromLTRB(
-                        16,
-                        16,
-                        VoiceDictationButton.isSupported ? 58 : 16,
-                        16,
-                      ),
+                    Positioned.fill(
                       child: TextField(
                         controller: _controller,
                         focusNode: _focusNode,
@@ -434,7 +428,15 @@ class _NoteWindowScreenState extends State<NoteWindowScreen>
                         smartDashesType: SmartDashesType.disabled,
                         smartQuotesType: SmartQuotesType.disabled,
                         readOnly: _isVoiceDictating,
-                        decoration: _noteWindowTextDecoration(),
+                        decoration: _noteWindowTextDecoration().copyWith(
+                          isCollapsed: false,
+                          contentPadding: EdgeInsets.fromLTRB(
+                            16,
+                            16,
+                            VoiceDictationButton.isSupported ? 58 : 16,
+                            16,
+                          ),
+                        ),
                         onChanged: _sendLive,
                       ),
                     ),

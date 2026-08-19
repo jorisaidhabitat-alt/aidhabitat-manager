@@ -28,11 +28,7 @@ class _FeedbackTabState extends State<FeedbackTab> {
   String? _status;
   bool _statusIsError = false;
 
-  static const List<String> _types = [
-    'Bug',
-    'Difficulté',
-    'Idée',
-  ];
+  static const List<String> _types = ['Bug', 'Difficulté', 'Idée'];
 
   @override
   void dispose() {
@@ -262,10 +258,14 @@ class _FeedbackTabState extends State<FeedbackTab> {
                 controller: _messageController,
                 focusNode: _messageFocus,
                 enabled: !_sending,
+                keyboardType: TextInputType.multiline,
                 expands: true,
                 minLines: null,
                 maxLines: null,
                 textInputAction: TextInputAction.newline,
+                stylusHandwritingEnabled: true,
+                autocorrect: true,
+                enableSuggestions: true,
                 textAlignVertical: TextAlignVertical.top,
                 decoration: InputDecoration(
                   hintText: 'Décris le bug, la difficulté ou l’idée…',
