@@ -533,6 +533,10 @@ class _AccessibilityTabState extends State<AccessibilityTab>
     if (_annexes.contains('Garage')) _motorisationOrder.add('Garage');
     if (_portail) _motorisationOrder.add('Portail');
 
+    // Répare également les dossiers plus anciens dont la pièce avait déjà
+    // été retirée avant que le nettoyage des diagnostics soit disponible.
+    await _pruneSanitaryRooms();
+
     if (mounted) setState(() => _loaded = true);
   }
 
@@ -769,8 +773,29 @@ class _AccessibilityTabState extends State<AccessibilityTab>
     if (diff.isEmpty) return;
 
     await widget.repository.updateHousing(widget.dossier.id, diff);
+    final roomsChanged = _kLevelConfigs.any(
+      (cfg) => dirtyAtStart.contains(cfg.roomsField),
+    );
+    if (roomsChanged) {
+      await _pruneSanitaryRooms();
+    }
     _dirtyHousingKeys.removeAll(dirtyAtStart);
     widget.onHousingChanged?.call();
+  }
+
+  Future<void> _pruneSanitaryRooms() async {
+    final bathroomLevels = <String>{};
+    final wcLevels = <String>{};
+    for (final cfg in _kLevelConfigs) {
+      final rooms = _levelRooms[cfg.field] ?? const <String>[];
+      if (rooms.contains('Salle de bain')) bathroomLevels.add(cfg.field);
+      if (rooms.contains('WC')) wcLevels.add(cfg.field);
+    }
+    await widget.repository.pruneDiagnosticSanitaireForRooms(
+      widget.dossier.id,
+      bathroomLevelFields: bathroomLevels,
+      wcLevelFields: wcLevels,
+    );
   }
 
   void _markChanged([Iterable<String> dirtyKeys = const []]) {
@@ -2512,13 +2537,30 @@ class _YearPickerField extends StatelessWidget {
                     ),
                   ),
                 ),
-                Icon(
-                  LucideIcons.calendarDays,
-                  size: 16,
-                  color: showWarning
-                      ? const Color(0xFFF59E0B)
-                      : const Color(0xFF8A939D),
-                ),
+                if (value.trim().isNotEmpty)
+                  IconButton(
+                    tooltip: 'Effacer',
+                    visualDensity: VisualDensity.compact,
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints.tightFor(
+                      width: 28,
+                      height: 28,
+                    ),
+                    onPressed: () => onChanged(''),
+                    icon: const Icon(
+                      LucideIcons.x,
+                      size: 16,
+                      color: Color(0xFF8A939D),
+                    ),
+                  )
+                else
+                  Icon(
+                    LucideIcons.calendarDays,
+                    size: 16,
+                    color: showWarning
+                        ? const Color(0xFFF59E0B)
+                        : const Color(0xFF8A939D),
+                  ),
               ],
             ),
           ),

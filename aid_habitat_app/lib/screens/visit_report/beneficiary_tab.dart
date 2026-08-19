@@ -2783,11 +2783,28 @@ class _DateOfBirthField extends StatelessWidget {
                     ),
                   ),
                 ),
-                const Icon(
-                  Icons.calendar_today_outlined,
-                  size: 16,
-                  color: Color(0xFF5C6670),
-                ),
+                if (birthDate.trim().isNotEmpty)
+                  IconButton(
+                    tooltip: 'Effacer la date',
+                    visualDensity: VisualDensity.compact,
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints.tightFor(
+                      width: 28,
+                      height: 28,
+                    ),
+                    onPressed: () => onChanged(''),
+                    icon: const Icon(
+                      Icons.close,
+                      size: 16,
+                      color: Color(0xFF5C6670),
+                    ),
+                  )
+                else
+                  const Icon(
+                    Icons.calendar_today_outlined,
+                    size: 16,
+                    color: Color(0xFF5C6670),
+                  ),
               ],
             ),
           ),

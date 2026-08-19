@@ -2667,6 +2667,40 @@ class DossierRepository {
     SyncEngine().notify();
   }
 
+  /// Removes sanitary details whose room no longer exists in Accessibility.
+  ///
+  /// Housing rooms are the source of truth for bathroom/WC instances. Keeping
+  /// an old instance after its room was removed would make it reappear in the
+  /// generated report and on another device after synchronization.
+  Future<void> pruneDiagnosticSanitaireForRooms(
+    String dossierId, {
+    required Set<String> bathroomLevelFields,
+    required Set<String> wcLevelFields,
+  }) async {
+    final current = await fetchDiagnosticSanitaire(dossierId);
+    if (current == null) return;
+
+    final bathrooms = current.sdbInstances
+        .where((instance) => bathroomLevelFields.contains(instance.levelField))
+        .toList();
+    final toilets = current.wcInstances
+        .where((instance) => wcLevelFields.contains(instance.levelField))
+        .toList();
+    if (bathrooms.length == current.sdbInstances.length &&
+        toilets.length == current.wcInstances.length) {
+      return;
+    }
+
+    await upsertDiagnosticSanitaire(
+      dossierId,
+      DiagnosticSanitaire(
+        dossierId: dossierId,
+        sdbInstances: bathrooms,
+        wcInstances: toilets,
+      ),
+    );
+  }
+
   Future<MesuresAnthropometriques?> fetchMesures(String dossierId) async {
     final db = await _database.database;
     final rows = await db.query(
