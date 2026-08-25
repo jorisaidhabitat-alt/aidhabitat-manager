@@ -1169,24 +1169,7 @@ const createNocodbStoreAdapter = ({ absoluteUrl, documentsTableId, documentChunk
       where: clauses.join('~and'),
     });
 
-    const chunkedDocumentIds = await listChunkDocumentIdsForPatient(
-      documentChunksTableId,
-      patientId,
-    );
-
     return records
-      .filter((record) => {
-        const documentId = stringValue(field(record, 'uuid_source') || record.id);
-        const inlineContent = stringValue(field(record, 'contenu_base64')).trim();
-        const hasContent = inlineContent.length > 0 || chunkedDocumentIds.has(documentId);
-        if (!hasContent) {
-          console.warn(
-            `[documents] document sans contenu masqué ` +
-            `(uuid=${documentId}, patient=${patientId}, fichier=${stringValue(field(record, 'nom_fichier'))})`,
-          );
-        }
-        return hasContent;
-      })
       .map((record) => {
         const tags = safeParseJsonArray(field(record, 'tags_json'));
         const updatedAt = stringValue(field(record, 'updated_at')) || stringValue(field(record, 'created_at')) || new Date().toISOString();

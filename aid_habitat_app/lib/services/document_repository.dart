@@ -1537,13 +1537,16 @@ class DocumentRepository {
       // figurer dans la pull list. Au prochain pull (≥ 5 min plus
       // tard), si le doc reste absent, on purge.
       //
-      // Cas spécial 2026-05-06 (bug fix) : si `remoteLocalIds` est
-      // VIDE (= NocoDB n'a aucun doc pour ce patient), on purge quand
-      // même les rows synced antérieurs au seuil. Avant : on skippait
-      // par sécurité, mais ça empêchait la propagation de la dernière
-      // suppression d'un patient (l'ergo supprimait la seule photo
-      // sur iPad → le Mac ne purgeait jamais la sienne).
+      // Une liste distante vide n'est pas une preuve de suppression :
+      // elle peut aussi provenir d'une restauration incomplète après
+      // réinstallation ou d'une lecture NocoDB momentanément partielle.
+      // On privilégie donc la conservation locale. La suppression
+      // explicite reste propagée par l'opération `delete_document`.
       // ----------------------------------------------------------------
+      if (remoteLocalIds.isEmpty) {
+        return;
+      }
+
       final ageThreshold = DateTime.now().subtract(const Duration(minutes: 5));
       final args = <Object?>[
         patientId,
@@ -1554,14 +1557,9 @@ class DocumentRepository {
           'patient_local_id = ? AND sync_state = ? '
           'AND pending_delete = 0 '
           'AND created_at < ?';
-      if (remoteLocalIds.isNotEmpty) {
-        final placeholders = List.filled(remoteLocalIds.length, '?').join(',');
-        whereClause += ' AND local_id NOT IN ($placeholders)';
-        args.addAll(remoteLocalIds);
-      }
-      // Si `remoteLocalIds` est vide, le where ne contient pas
-      // `NOT IN (…)` → on purge TOUT ce qui est synced + > 5min,
-      // ce qui correspond à « l'autre device a tout supprimé ».
+      final placeholders = List.filled(remoteLocalIds.length, '?').join(',');
+      whereClause += ' AND local_id NOT IN ($placeholders)';
+      args.addAll(remoteLocalIds);
       final deleted = await txn.delete(
         'documents',
         where: whereClause,
