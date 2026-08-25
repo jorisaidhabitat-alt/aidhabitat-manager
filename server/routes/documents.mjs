@@ -91,7 +91,7 @@ router.get('/api/documents/:patientId', requireAuth, async (req, res, next) => {
     res.json({
       success: true,
       error: null,
-      data: { documents: documents.map((document) => ({ ...documentContext, ...document })) },
+      data: { documents: documents.map((document) => ({ ...document, ...documentContext })) },
     });
   } catch (error) {
     next(error);

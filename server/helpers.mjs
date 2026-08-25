@@ -525,6 +525,7 @@ export const resolveBeneficiaryRecord = ({ beneficiaires, dossiers = [], logemen
   }
 
   const linkedRecord = latestByFieldValue(dossiers, 'patient_id', appBeneficiaryId)
+    || latestByFieldValue(dossiers, 'uuid_source', appBeneficiaryId)
     || latestByFieldValue(logements, 'beneficiaire_id', appBeneficiaryId)
     || latestByFieldValue(contextes, 'beneficiaire_id', appBeneficiaryId)
     || latestByFieldValue(infosAdmin, 'beneficiaire_id', appBeneficiaryId);

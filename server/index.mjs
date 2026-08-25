@@ -1069,6 +1069,7 @@ const resolveBeneficiaryRecord = ({ beneficiaires, dossiers = [], logements = []
   }
 
   const linkedRecord = latestByFieldValue(dossiers, 'patient_id', appBeneficiaryId)
+    || latestByFieldValue(dossiers, 'uuid_source', appBeneficiaryId)
     || latestByFieldValue(logements, 'beneficiaire_id', appBeneficiaryId)
     || latestByFieldValue(contextes, 'beneficiaire_id', appBeneficiaryId)
     || latestByFieldValue(infosAdmin, 'beneficiaire_id', appBeneficiaryId);
@@ -3293,10 +3294,18 @@ const _tryResolveBeneficiaryAccessFast = async (appUser, patientId) => {
 
   const escapedId = String(patientId).replace(/[(),]/g, '');
   if (!escapedId) return undefined;
-  const dossiers = await queryAll(TABLES.dossiers, {
+  let dossiers = await queryAll(TABLES.dossiers, {
     fields: FIELD_SETS.dossiers,
     where: `(patient_id,eq,${escapedId})`,
   });
+  // Older offline databases can retain the Airtable/dossier identifier as
+  // patientId. Resolve that alias before falling back to the expensive scan.
+  if (dossiers.length === 0) {
+    dossiers = await queryAll(TABLES.dossiers, {
+      fields: FIELD_SETS.dossiers,
+      where: `(uuid_source,eq,${escapedId})`,
+    });
+  }
   if (dossiers.length === 0) return undefined;
   const beneficiaireRowId = field(latestRecord(dossiers), 'beneficiaires_id');
   if (!beneficiaireRowId) return undefined;
