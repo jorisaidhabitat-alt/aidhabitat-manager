@@ -1384,6 +1384,25 @@ class DocumentRepository {
     return '';
   }
 
+  String _remoteDocumentLocalId(String patientId, Map<String, dynamic> remote) {
+    final remoteIdentity =
+        [
+              remote['id'],
+              remote['sourceDocumentId'],
+              remote['clientDocumentId'],
+              remote['remotePath'],
+              remote['publicUrl'],
+            ]
+            .map((value) => value?.toString().trim() ?? '')
+            .firstWhere(
+              (value) => value.isNotEmpty,
+              orElse: () => jsonEncode(remote),
+            );
+    final patientKey = base64Url.encode(utf8.encode(patientId));
+    final documentKey = base64Url.encode(utf8.encode(remoteIdentity));
+    return 'remote_doc_${patientKey}_$documentKey';
+  }
+
   Future<void> mergeRemoteDocuments(
     String patientId,
     List<Map<String, dynamic>> remoteDocuments,
@@ -1468,7 +1487,7 @@ class DocumentRepository {
             .toLowerCase();
         final localId =
             existing?['local_id'] as String? ??
-            'remote_doc_${remote['id'] ?? DateTime.now().microsecondsSinceEpoch}';
+            _remoteDocumentLocalId(patientId, remote);
         remoteLocalIds.add(localId);
         final row = {
           'local_id': localId,

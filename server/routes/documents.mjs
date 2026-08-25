@@ -55,6 +55,15 @@ const canonicalPatientIdForAccess = (access) => (
   syntheticBeneficiaryId(access.beneficiaryRecord.id)
 );
 
+const scopeDocumentForPatient = (document, requestedPatientId) => ({
+  ...document,
+  // Flutter stores documents with a global SQLite primary key. Historical
+  // beneficiary aliases may expose the same remote document in more than one
+  // workspace, so the cache identity must include the requested patient.
+  id: `${requestedPatientId}::${document.id}`,
+  sourceDocumentId: document.id,
+});
+
 const listDocumentsForBeneficiary = async ({ requestedPatientId, access, dossierId }) => {
   const canonicalPatientId = canonicalPatientIdForAccess(access);
   const patientIds = [...new Set([
@@ -96,7 +105,12 @@ router.get('/api/documents/:patientId', requireAuth, async (req, res, next) => {
     res.json({
       success: true,
       error: null,
-      data: { documents: documents.map((document) => ({ ...document, ...documentContext })) },
+      data: {
+        documents: documents.map((document) => ({
+          ...scopeDocumentForPatient(document, req.params.patientId),
+          ...documentContext,
+        })),
+      },
     });
   } catch (error) {
     next(error);

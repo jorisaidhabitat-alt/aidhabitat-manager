@@ -7481,6 +7481,15 @@ const canonicalPatientIdForDocumentAccess = (access) => (
   syntheticBeneficiaryId(access.beneficiaryRecord.id)
 );
 
+const scopeDocumentForRequestedPatient = (document, requestedPatientId) => ({
+  ...document,
+  // The native cache uses this value as a global SQLite primary key. Scope it
+  // to the requested beneficiary so legacy Airtable/canonical aliases cannot
+  // move the same row between two local workspaces during background refresh.
+  id: `${requestedPatientId}::${document.id}`,
+  sourceDocumentId: document.id,
+});
+
 const listDocumentsForBeneficiary = async ({ requestedPatientId, access, dossierId }) => {
   const canonicalPatientId = canonicalPatientIdForDocumentAccess(access);
   const patientIds = [...new Set([
@@ -7521,7 +7530,12 @@ app.get('/api/documents/:patientId', requireAuth, async (req, res, next) => {
     res.json({
       success: true,
       error: null,
-      data: { documents: documents.map((document) => ({ ...documentContext, ...document })) },
+      data: {
+        documents: documents.map((document) => ({
+          ...documentContext,
+          ...scopeDocumentForRequestedPatient(document, req.params.patientId),
+        })),
+      },
     });
   } catch (error) {
     next(error);
