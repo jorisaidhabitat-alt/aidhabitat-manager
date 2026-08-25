@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart' show kReleaseMode;
 
 class AppConfig {
   static const _devApiBaseUrl = 'http://localhost:3001';
+  static const _productionApiBaseUrl = 'https://api.aidhabitat.fr';
 
   static const _apiBaseUrlBuild = String.fromEnvironment(
     'AIDHABITAT_API_BASE_URL',
@@ -82,7 +83,13 @@ class AppConfig {
 
   static String _initialApiBaseUrl() {
     final buildUrl = _apiBaseUrlBuild.trim();
-    if (buildUrl.isEmpty) return kReleaseMode ? '' : _devApiBaseUrl;
+    // Xcode archives can be launched directly from Organizer without going
+    // through Flutter's release script. Keep native Release builds connected
+    // to the production API in that case instead of silently shipping an
+    // offline-only application.
+    if (buildUrl.isEmpty) {
+      return kReleaseMode ? _productionApiBaseUrl : _devApiBaseUrl;
+    }
     return _sanitizeApiBaseUrl(buildUrl);
   }
 
