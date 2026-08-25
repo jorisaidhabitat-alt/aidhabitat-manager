@@ -7483,7 +7483,12 @@ const canonicalPatientIdForDocumentAccess = (access) => (
 
 const listDocumentsForBeneficiary = async ({ requestedPatientId, access, dossierId }) => {
   const canonicalPatientId = canonicalPatientIdForDocumentAccess(access);
-  const patientIds = [...new Set([canonicalPatientId, requestedPatientId].filter(Boolean))];
+  const patientIds = [...new Set([
+    canonicalPatientId,
+    requestedPatientId,
+    field(access.dossierRecord, 'patient_id'),
+    field(access.dossierRecord, 'uuid_source'),
+  ].map((value) => stringValue(value).trim()).filter(Boolean))];
   const documentLists = await Promise.all(patientIds.map((patientId) => (
     mobileSyncStore.listDocumentsByPatient(patientId, {
       dossierId: dossierId || undefined,
