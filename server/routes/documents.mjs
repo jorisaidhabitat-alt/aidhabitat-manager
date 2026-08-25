@@ -15,6 +15,7 @@ import {
   boolTextOrNull,
   httpError,
   safeParseJsonArray,
+  syntheticBeneficiaryId,
   resolveBeneficiaryAccess,
   buildBeneficiaryDocumentContext,
   mapStoredDocument,
@@ -50,17 +51,41 @@ import {
 
 const router = express.Router();
 
+const canonicalPatientIdForAccess = (access) => (
+  syntheticBeneficiaryId(access.beneficiaryRecord.id)
+);
+
+const listDocumentsForBeneficiary = async ({ requestedPatientId, access, dossierId }) => {
+  const canonicalPatientId = canonicalPatientIdForAccess(access);
+  const patientIds = [...new Set([canonicalPatientId, requestedPatientId].filter(Boolean))];
+  const documentLists = await Promise.all(patientIds.map((patientId) => (
+    mobileSyncStore.listDocumentsByPatient(patientId, {
+      dossierId: dossierId || undefined,
+    })
+  )));
+
+  // Some historical uploads were stored under a dossier/Airtable alias while
+  // newer uploads use the canonical NocoDB beneficiary id. Return both without
+  // duplicating a document during the migration period.
+  return [...new Map(
+    documentLists.flat().map((document) => [String(document.id), document]),
+  ).values()];
+};
+
 router.get('/api/documents/:patientId', requireAuth, async (req, res, next) => {
   try {
     const access = await resolveBeneficiaryAccess(req.appUser, req.params.patientId);
     const dossierId = stringValue(req.query?.dossierId).trim();
-    const documents = await mobileSyncStore.listDocumentsByPatient(req.params.patientId, {
-      dossierId: dossierId || undefined,
+    const documents = await listDocumentsForBeneficiary({
+      requestedPatientId: req.params.patientId,
+      access,
+      dossierId,
     });
+    const canonicalPatientId = canonicalPatientIdForAccess(access);
     const documentContext = buildBeneficiaryDocumentContext({
       beneficiaryRecord: access.beneficiaryRecord,
       dossierRecord: access.dossierRecord,
-      patientId: req.params.patientId,
+      patientId: canonicalPatientId,
     });
 
     res.json({
@@ -97,13 +122,14 @@ router.post(
       }
 
       const access = await resolveBeneficiaryAccess(req.appUser, patientId);
+      const canonicalPatientId = canonicalPatientIdForAccess(access);
       const documentContext = buildBeneficiaryDocumentContext({
         beneficiaryRecord: access.beneficiaryRecord,
         dossierRecord: access.dossierRecord,
-        patientId,
+        patientId: canonicalPatientId,
       });
       const document = await mobileSyncStore.upsertDocument({
-        patientId,
+        patientId: canonicalPatientId,
         dossierId: requestedDossierId || field(access.dossierRecord, 'uuid_source') || null,
         documentLocalId,
         title,
@@ -139,13 +165,14 @@ router.post('/api/documents', requireAuth, async (req, res, next) => {
     }
 
     const access = await resolveBeneficiaryAccess(req.appUser, patientId);
+    const canonicalPatientId = canonicalPatientIdForAccess(access);
     const documentContext = buildBeneficiaryDocumentContext({
       beneficiaryRecord: access.beneficiaryRecord,
       dossierRecord: access.dossierRecord,
-      patientId,
+      patientId: canonicalPatientId,
     });
     const document = await mobileSyncStore.upsertDocument({
-      patientId,
+      patientId: canonicalPatientId,
       dossierId: requestedDossierId || field(access.dossierRecord, 'uuid_source') || null,
       documentLocalId,
       title,
