@@ -1188,9 +1188,24 @@ class DataService {
   /// donc inutile et pouvait laisser toute l'app vide si le réseau ou la
   /// session échouait entre les deux étapes.
   Future<void> forceResyncFromRemote() async {
-    final pending = await _syncRepository.countPendingOperations();
+    var pending = await _syncRepository.countPendingOperations();
     if (pending > 0) {
-      throw PendingSyncBeforeForceResyncException(pending);
+      final engine = SyncEngine();
+      await engine.retryFailedOperations();
+      engine.requestSync();
+
+      // Une synchronisation manuelle doit d'abord vider la file locale. Le
+      // précédent comportement refusait immédiatement l'action et affichait
+      // un bandeau rouge sans même tenter d'envoyer les écritures en attente.
+      final deadline = DateTime.now().add(const Duration(seconds: 30));
+      while (pending > 0 && DateTime.now().isBefore(deadline)) {
+        await Future<void>.delayed(const Duration(milliseconds: 250));
+        pending = await _syncRepository.countPendingOperations();
+      }
+
+      if (pending > 0) {
+        throw PendingSyncBeforeForceResyncException(pending);
+      }
     }
 
     final refreshed = await refreshWorkspaceFromRemote();
@@ -1208,7 +1223,8 @@ class PendingSyncBeforeForceResyncException implements Exception {
   @override
   String toString() =>
       '$count opération${count > 1 ? 's' : ''} encore en attente. '
-      'Laisse la synchronisation se terminer avant de recharger les données.';
+      'Les modifications sont conservées sur cet appareil et seront '
+      'réessayées automatiquement.';
 }
 
 class ForceResyncUnavailableException implements Exception {
