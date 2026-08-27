@@ -4688,7 +4688,7 @@ app.get('/api/health/live', (_req, res) => {
   res.json({
     success: true,
     status: 'live',
-    uptimeSec: Math.round(process.uptime()),
+    message: 'OK',
   });
 });
 
@@ -4698,7 +4698,7 @@ const sendReadyHealth = async (_req, res, next) => {
     res.json({
       success: true,
       status: 'ready',
-      message: 'Connexion active à la base métier',
+      message: 'OK',
     });
   } catch (error) {
     next(error);
@@ -8727,23 +8727,6 @@ app.put('/api/visit-recommendations/:dossierId', requireAuth, async (req, res, n
 app.use(aiRouter);
 app.use(feedbackRouter);
 
-app.use((error, _req, res, _next) => {
-  console.error('[nocodb-api]', error);
-  const isMulterLimit = error?.name === 'MulterError' &&
-    ['LIMIT_FILE_SIZE', 'LIMIT_FILE_COUNT', 'LIMIT_PART_COUNT'].includes(error?.code);
-  const isBodyTooLarge = error?.type === 'entity.too.large';
-  const statusCode = isMulterLimit || isBodyTooLarge
-    ? 413
-    : Number(error?.statusCode) || 500;
-  const message = isMulterLimit
-    ? 'Payload Too Large: trop de fichiers ou fichier trop volumineux'
-    : error instanceof Error ? error.message : 'Erreur serveur inconnue';
-  res.status(statusCode).json({
-    success: false,
-    error: message,
-  });
-});
-
 app.use(express.static(DIST_DIR_PATH, {
   etag: false,
   lastModified: false,
@@ -8756,7 +8739,10 @@ app.use(express.static(DIST_DIR_PATH, {
 
 app.use(async (req, res, next) => {
   if (req.path.startsWith('/api') || req.path.startsWith('/uploads')) {
-    next();
+    res.status(404).json({
+      success: false,
+      error: 'Not Found',
+    });
     return;
   }
 
@@ -8768,8 +8754,34 @@ app.use(async (req, res, next) => {
     res.setHeader('Expires', '0');
     res.sendFile(DIST_INDEX_PATH);
   } catch (error) {
+    if (error?.code === 'ENOENT') {
+      res.status(404).json({
+        success: false,
+        error: 'Not Found',
+      });
+      return;
+    }
     next(error);
   }
+});
+
+app.use((error, _req, res, _next) => {
+  console.error('[nocodb-api]', error);
+  const isMulterLimit = error?.name === 'MulterError' &&
+    ['LIMIT_FILE_SIZE', 'LIMIT_FILE_COUNT', 'LIMIT_PART_COUNT'].includes(error?.code);
+  const isBodyTooLarge = error?.type === 'entity.too.large';
+  const statusCode = isMulterLimit || isBodyTooLarge
+    ? 413
+    : Number(error?.statusCode) || 500;
+  const message = isMulterLimit
+    ? 'Payload Too Large: trop de fichiers ou fichier trop volumineux'
+    : statusCode >= 500
+      ? 'Erreur serveur'
+      : error instanceof Error ? error.message : 'Erreur inconnue';
+  res.status(statusCode).json({
+    success: false,
+    error: message,
+  });
 });
 
 const isDirectExecution = process.argv[1]

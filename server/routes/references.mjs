@@ -42,7 +42,8 @@ router.get('/api/health', async (_req, res, next) => {
     await queryAll(TABLES.beneficiaires, { fields: ['Id'], limit: 1 });
     res.json({
       success: true,
-      message: 'Connexion active à la base métier',
+      status: 'ready',
+      message: 'OK',
     });
   } catch (error) {
     next(error);
