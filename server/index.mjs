@@ -98,6 +98,13 @@ const ANAH_PUBLIC_URL = 'https://www.anah.gouv.fr/';
 const ANAH_REGISTRATION_URL = 'https://monprojet.anah.gouv.fr/';
 const APP_PUBLIC_BASE_URL = String(process.env.APP_PUBLIC_BASE_URL || '').trim().replace(/\/+$/, '')
   || (process.env.VERCEL_URL ? `https://${String(process.env.VERCEL_URL).trim()}` : '');
+const APP_PUBLIC_BASE_HOST = (() => {
+  try {
+    return APP_PUBLIC_BASE_URL ? new URL(APP_PUBLIC_BASE_URL).hostname.toLowerCase() : '';
+  } catch {
+    return '';
+  }
+})();
 const LOCALHOST_URL_PATTERN = /^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?\//i;
 // Accepts every Vercel preview + prod host belonging to this project family:
 //   - aid-habitat-manager.vercel.app      (legacy React + API root)
@@ -145,6 +152,21 @@ const parseHostAllowlist = (value) => String(value || '')
     }
   })
   .filter(Boolean);
+
+function requestHostname(req) {
+  const forwardedHost = String(req.headers['x-forwarded-host'] || '')
+    .split(',')
+    .at(0)
+    ?.trim();
+  const rawHost = forwardedHost || String(req.headers.host || '');
+  return rawHost.split(':').at(0)?.toLowerCase() || '';
+}
+
+function isApiOnlyPublicSurface(req) {
+  if (process.env.AIDHABITAT_API_ONLY === '1') return true;
+  return requestHostname(req) === 'api.aidhabitat.fr'
+    || APP_PUBLIC_BASE_HOST === 'api.aidhabitat.fr';
+}
 
 const REPORT_IMAGE_ALLOWED_HOSTS = new Set([
   ...parseHostAllowlist(APP_PUBLIC_BASE_URL),
@@ -8726,6 +8748,17 @@ app.put('/api/visit-recommendations/:dossierId', requireAuth, async (req, res, n
 
 app.use(aiRouter);
 app.use(feedbackRouter);
+
+app.all(['/', '/openapi.json'], (req, res, next) => {
+  if (!isApiOnlyPublicSurface(req)) {
+    next();
+    return;
+  }
+  res.status(404).json({
+    success: false,
+    error: 'Not Found',
+  });
+});
 
 app.use(express.static(DIST_DIR_PATH, {
   etag: false,

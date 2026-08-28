@@ -1725,6 +1725,7 @@ class NocodbApiClient {
     required String category,
     required List<String> tags,
     String imageDataUrl = '',
+    String imageUrl = '',
   }) async {
     if (!AppConfig.hasRemoteConfig) {
       throw Exception('Remote config missing');
@@ -1736,6 +1737,7 @@ class NocodbApiClient {
       'category': category,
       'tags': tags,
     };
+    if (imageUrl.isNotEmpty) body['imageUrl'] = imageUrl;
     if (imageDataUrl.isNotEmpty) body['imageDataUrl'] = imageDataUrl;
 
     final response = await _client
@@ -1759,6 +1761,29 @@ class NocodbApiClient {
       throw Exception('Unexpected wiki item payload');
     }
     return _mapWikiItem(saved);
+  }
+
+  Future<void> deleteWikiItem(String itemId) async {
+    if (!AppConfig.hasRemoteConfig) {
+      throw Exception('Remote config missing');
+    }
+
+    final response = await _runWithTransientGuard(
+      'Remote wiki item delete',
+      () => _client
+          .delete(
+            Uri.parse('$_baseUrl/api/wiki-library/${_pathSegment(itemId)}'),
+            headers: _headers,
+          )
+          .timeout(_defaultTimeout),
+    );
+
+    if (response.statusCode == 404) return;
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(
+        'Remote wiki item delete failed (${response.statusCode})',
+      );
+    }
   }
 
   /// Uploads a base64 data URL image as profile photo.

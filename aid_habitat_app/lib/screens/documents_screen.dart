@@ -118,6 +118,7 @@ class _DocumentsScreenState extends State<DocumentsScreen>
   // à l'ouverture.
   bool _isImporting = false;
   bool _isBulkDownloading = false;
+  bool _isDocumentPreviewOpen = false;
 
   /// True pendant qu'un picker (caméra / galerie / fichier) est ouvert.
   /// Sert de verrou contre les double-taps — sans ça, le même fichier
@@ -601,6 +602,9 @@ class _DocumentsScreenState extends State<DocumentsScreen>
   }
 
   Future<void> _previewDocument(DocItem doc) async {
+    if (_isDocumentPreviewOpen || !mounted) return;
+    _isDocumentPreviewOpen = true;
+
     // Tous les types passent désormais par `_PreviewScreen` (toolbar
     // d'annotation + bouton Save + bouton Download + bouton Delete).
     // Avant, le web shuntait les images vers une lightbox simple
@@ -616,49 +620,56 @@ class _DocumentsScreenState extends State<DocumentsScreen>
     // Quick-Look style pop-up : dialog centré, fond semi-transparent, escape
     // pour fermer. On utilise une barrier colorée + une Dialog translucide
     // qui laisse voir le bureau autour.
-    await showGeneralDialog<void>(
-      context: context,
-      // `barrierDismissible: false` — sans ça, un clic sur le fond
-      // sombre ferme le dialog SANS passer par `_handleClose`, donc les
-      // annotations en cours sont perdues silencieusement. La fermeture
-      // doit toujours passer par le bouton X (qui propose Save / Ignorer
-      // si du travail non sauvé est présent).
-      barrierDismissible: false,
-      barrierLabel: 'Aperçu du document',
-      barrierColor: Colors.black.withValues(alpha: 0.6),
-      transitionDuration: const Duration(milliseconds: 180),
-      transitionBuilder: (ctx, anim, _, child) {
-        return FadeTransition(
-          opacity: anim,
-          child: ScaleTransition(
-            scale: Tween<double>(begin: 0.96, end: 1).animate(
-              CurvedAnimation(parent: anim, curve: Curves.easeOutCubic),
+    try {
+      await showGeneralDialog<void>(
+        context: context,
+        // `barrierDismissible: false` — sans ça, un clic sur le fond
+        // sombre ferme le dialog SANS passer par `_handleClose`, donc les
+        // annotations en cours sont perdues silencieusement. La fermeture
+        // doit toujours passer par le bouton X (qui propose Save / Ignorer
+        // si du travail non sauvé est présent).
+        barrierDismissible: false,
+        barrierLabel: 'Aperçu du document',
+        barrierColor: Colors.black.withValues(alpha: 0.6),
+        transitionDuration: const Duration(milliseconds: 180),
+        transitionBuilder: (ctx, anim, _, child) {
+          return FadeTransition(
+            opacity: anim,
+            child: ScaleTransition(
+              scale: Tween<double>(begin: 0.96, end: 1).animate(
+                CurvedAnimation(parent: anim, curve: Curves.easeOutCubic),
+              ),
+              child: child,
             ),
-            child: child,
-          ),
-        );
-      },
-      pageBuilder: (ctx, _, _) {
-        return _PreviewScreen(
-          doc: doc,
-          onDelete: () async {
-            final nav = Navigator.of(ctx);
-            await _deleteDocument(doc);
-            if (nav.canPop()) nav.pop();
-          },
-          onDownload: () => _downloadDocument(doc),
-          onSave: (newTitle) async {
-            await _documentRepository.updateDocumentMetadata(
-              documentId: doc.id,
-              title: newTitle,
-              tags: doc.tags,
-            );
-            await _loadDocuments(silent: true);
-            if (mounted) _showSnack('Document mis à jour.');
-          },
-        );
-      },
-    );
+          );
+        },
+        pageBuilder: (ctx, _, _) {
+          return _PreviewScreen(
+            doc: doc,
+            onDelete: () async {
+              final nav = Navigator.of(ctx);
+              await _deleteDocument(doc);
+              if (nav.canPop()) nav.pop();
+            },
+            onDownload: () => _downloadDocument(doc),
+            onSave: (newTitle) async {
+              await _documentRepository.updateDocumentMetadata(
+                documentId: doc.id,
+                title: newTitle,
+                tags: doc.tags,
+              );
+              await _loadDocuments(silent: true);
+              if (mounted) _showSnack('Document mis à jour.');
+            },
+          );
+        },
+      );
+    } finally {
+      // La transition dure 180 ms : ne pas accepter un nouveau toucher
+      // tant que la barrière sombre précédente n'est pas retirée.
+      await Future<void>.delayed(const Duration(milliseconds: 180));
+      _isDocumentPreviewOpen = false;
+    }
     // Refresh à la fermeture de la modale : si l'utilisateur a sauvé
     // une annotation, `enqueueAnnotatedReuploadBytes` a écrit un nouveau
     // `local_file_data_url` côté SQLite. Sans ce reload, la grille
@@ -1711,13 +1722,7 @@ class _DocumentsScreenState extends State<DocumentsScreen>
           _previewDocument(doc);
         }
       },
-      onLongPress: () {
-        if (!_isSelectionMode) {
-          _enterSelectionMode(doc.id);
-        } else {
-          _toggleSelection(doc.id);
-        }
-      },
+      onSelect: () => _enterSelectionMode(doc.id),
       // Clic sur la checkbox (hover ou déjà sélectionné) → active
       // directement le mode sélection et toggle la card.
       onToggleSelect: () {
@@ -2441,8 +2446,10 @@ class _PreviewScreenState extends State<_PreviewScreen> {
     return _annotatorKey.currentState?.hasUnsavedChanges ?? false;
   }
 
-  bool get _hasUnsavedRotation =>
-      _rotationQuarterTurns != _savedRotationQuarterTurns;
+  int get _pendingRotationQuarterTurns =>
+      (_rotationQuarterTurns - _savedRotationQuarterTurns) % 4;
+
+  bool get _hasUnsavedRotation => _pendingRotationQuarterTurns != 0;
 
   bool get _hasAnyUnsaved =>
       _hasUnsavedTitle || _hasUnsavedAnnotation || _hasUnsavedRotation;
@@ -2526,7 +2533,9 @@ class _PreviewScreenState extends State<_PreviewScreen> {
 
   void _rotateClockwise() {
     setState(() {
-      _rotationQuarterTurns = (_rotationQuarterTurns + 1) % 4;
+      // Conserver une valeur croissante évite que l'animation reparte en sens
+      // inverse lors du passage du quatrième quart de tour au suivant.
+      _rotationQuarterTurns += 1;
     });
   }
 
@@ -2556,7 +2565,7 @@ class _PreviewScreenState extends State<_PreviewScreen> {
   }
 
   Future<void> _saveRotation() async {
-    final delta = (_rotationQuarterTurns - _savedRotationQuarterTurns) % 4;
+    final delta = _pendingRotationQuarterTurns;
     if (delta == 0) return;
     final source = await _sourceBytes();
     if (source == null || source.isEmpty) {
@@ -2798,8 +2807,10 @@ class _PreviewScreenState extends State<_PreviewScreen> {
                     children: [
                       _buildToolbar(),
                       Expanded(
-                        child: RotatedBox(
-                          quarterTurns: _rotationQuarterTurns,
+                        child: AnimatedRotation(
+                          turns: _rotationQuarterTurns / 4,
+                          duration: const Duration(milliseconds: 280),
+                          curve: Curves.easeInOutCubic,
                           child: _buildPreviewBody(),
                         ),
                       ),
@@ -2873,8 +2884,8 @@ class _PreviewScreenState extends State<_PreviewScreen> {
           ),
           const SizedBox(width: 8),
           _TopbarButton(
-            icon: LucideIcons.rotateCw,
-            tooltip: 'Tourner de 90°',
+            icon: Icons.rotate_90_degrees_cw_rounded,
+            tooltip: 'Pivoter le document de 90°',
             onPressed: _rotateClockwise,
           ),
           const SizedBox(width: 4),
@@ -4362,7 +4373,8 @@ class _ImageAnnotator extends StatefulWidget {
   State<_ImageAnnotator> createState() => _ImageAnnotatorState();
 }
 
-class _ImageAnnotatorState extends State<_ImageAnnotator> {
+class _ImageAnnotatorState extends State<_ImageAnnotator>
+    with SingleTickerProviderStateMixin {
   // Strokes actuellement affichés.
   List<_AnnotStroke> _strokes = [];
   // Hash des strokes lors du dernier save → permet de détecter des modifs.
@@ -4371,6 +4383,8 @@ class _ImageAnnotatorState extends State<_ImageAnnotator> {
   final GlobalKey _boundaryKey = GlobalKey();
   final TransformationController _transformationController =
       TransformationController();
+  late final AnimationController _zoomResetController;
+  Animation<Matrix4>? _zoomResetAnimation;
   StreamSubscription<PencilDoubleTapEvent>? _pencilDoubleTapSubscription;
   int? _activeDrawingPointer;
   bool _activeDrawingPointerIsTouch = false;
@@ -4409,6 +4423,16 @@ class _ImageAnnotatorState extends State<_ImageAnnotator> {
   @override
   void initState() {
     super.initState();
+    _zoomResetController =
+        AnimationController(
+          vsync: this,
+          duration: const Duration(milliseconds: 260),
+        )..addListener(() {
+          final animation = _zoomResetAnimation;
+          if (animation != null) {
+            _transformationController.value = animation.value;
+          }
+        });
     _transformationController.addListener(_handleTransformationChanged);
     final seeded = widget.initialStrokes;
     if (seeded != null) {
@@ -4431,6 +4455,7 @@ class _ImageAnnotatorState extends State<_ImageAnnotator> {
   void dispose() {
     _pencilDoubleTapSubscription?.cancel();
     _pencilDoubleTapSubscription = null;
+    _zoomResetController.dispose();
     _transformationController
       ..removeListener(_handleTransformationChanged)
       ..dispose();
@@ -4648,18 +4673,19 @@ class _ImageAnnotatorState extends State<_ImageAnnotator> {
     setState(() => _zoom = nextZoom);
   }
 
-  void _setZoom(double value) {
-    final next = value.clamp(0.5, 5.0);
-    final dx = (_canvasSize.width - (_canvasSize.width * next)) / 2;
-    final dy = (_canvasSize.height - (_canvasSize.height * next)) / 2;
-    _transformationController.value = Matrix4.identity()
-      ..translateByDouble(dx, dy, 0, 1)
-      ..scaleByDouble(next, next, 1, 1);
-  }
-
-  void _resetZoom() {
-    // L'identité restaure à la fois l'échelle de base et la position centrée.
-    _transformationController.value = Matrix4.identity();
+  void _animateZoomToOrigin() {
+    _zoomResetController.stop();
+    _zoomResetAnimation =
+        Matrix4Tween(
+          begin: Matrix4.copy(_transformationController.value),
+          end: Matrix4.identity(),
+        ).animate(
+          CurvedAnimation(
+            parent: _zoomResetController,
+            curve: Curves.easeOutCubic,
+          ),
+        );
+    _zoomResetController.forward(from: 0);
   }
 
   bool _isDrawingDevice(PointerEvent event) {
@@ -4781,13 +4807,14 @@ class _ImageAnnotatorState extends State<_ImageAnnotator> {
                   minScale: 0.5,
                   maxScale: 5,
                   // Le déplacement à un doigt ferait bouger la page pendant
-                  // un trait Pencil. Le pinch et les boutons de zoom restent
-                  // disponibles, tandis que le swipe horizontal change de page.
+                  // un trait Pencil. Le pinch reste disponible, tandis que le
+                  // swipe horizontal change de page.
                   panEnabled: false,
                   boundaryMargin: const EdgeInsets.all(160),
                   trackpadScrollCausesScale: true,
                   scaleFactor: 140,
-                  onInteractionEnd: (_) => _resetZoom(),
+                  onInteractionStart: (_) => _zoomResetController.stop(),
+                  onInteractionEnd: (_) => _animateZoomToOrigin(),
                   child: SizedBox(
                     width: size.width,
                     height: size.height,
@@ -4875,28 +4902,6 @@ class _ImageAnnotatorState extends State<_ImageAnnotator> {
             selected: _tool == _AnnotTool.eraser,
             tooltip: 'Gomme',
             onTap: () => _setTool(_AnnotTool.eraser),
-          ),
-          const SizedBox(width: 6),
-          Container(width: 1, height: 24, color: const Color(0xFFE5E7EB)),
-          const SizedBox(width: 6),
-          _ToolButton(
-            icon: LucideIcons.zoomOut,
-            tooltip: 'Maintenir pour dézoomer',
-            onPressStart: () => _setZoom(0.7),
-            onPressEnd: _resetZoom,
-          ),
-          const SizedBox(width: 6),
-          _ToolButton(
-            icon: LucideIcons.maximize2,
-            tooltip: 'Taille d’origine',
-            onTap: _resetZoom,
-          ),
-          const SizedBox(width: 6),
-          _ToolButton(
-            icon: LucideIcons.zoomIn,
-            tooltip: 'Maintenir pour zoomer',
-            onPressStart: () => _setZoom(2),
-            onPressEnd: _resetZoom,
           ),
           const SizedBox(width: 6),
           Container(width: 1, height: 24, color: const Color(0xFFE5E7EB)),
@@ -5066,31 +5071,24 @@ class _ToolButton extends StatelessWidget {
   final bool selected;
   final String tooltip;
   final VoidCallback? onTap;
-  final VoidCallback? onPressStart;
-  final VoidCallback? onPressEnd;
 
   const _ToolButton({
     required this.icon,
     required this.tooltip,
     this.onTap,
-    this.onPressStart,
-    this.onPressEnd,
     this.selected = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    final disabled = onTap == null && onPressStart == null;
+    final disabled = onTap == null;
     return Tooltip(
       message: tooltip,
       child: Material(
         color: Colors.transparent,
         child: InkWell(
           borderRadius: BorderRadius.circular(999),
-          onTap: onTap ?? (onPressStart == null ? null : () {}),
-          onTapDown: onPressStart == null ? null : (_) => onPressStart!(),
-          onTapUp: onPressEnd == null ? null : (_) => onPressEnd!(),
-          onTapCancel: onPressEnd,
+          onTap: onTap,
           child: Container(
             width: 40,
             height: 40,

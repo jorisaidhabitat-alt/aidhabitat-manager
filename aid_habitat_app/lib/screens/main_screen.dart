@@ -45,6 +45,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   final AuthService _authService = AuthService();
   late final SyncEngine _syncEngine;
   StreamSubscription<SyncEngineState>? _syncSubscription;
+  StreamSubscription<void>? _dossierRecordsSubscription;
   StreamSubscription<bool>? _connectivitySubscription;
 
   String _activeView = 'dashboard';
@@ -89,6 +90,11 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     _isOffline = connectivity.isOffline;
 
     _syncSubscription = _syncEngine.stateStream.listen(_onSyncStateChanged);
+    _dossierRecordsSubscription = _dataService.onDossierRecordsUpdated.listen((
+      _,
+    ) {
+      _refreshDossiers();
+    });
     _connectivitySubscription = connectivity.offlineStream.listen((offline) {
       if (mounted) setState(() => _isOffline = offline);
     });
@@ -122,6 +128,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _syncSubscription?.cancel();
+    _dossierRecordsSubscription?.cancel();
     _connectivitySubscription?.cancel();
     // SyncEngine is a process-lifetime singleton — do not dispose it with the
     // screen, or later screens will lose the stream and the engine.

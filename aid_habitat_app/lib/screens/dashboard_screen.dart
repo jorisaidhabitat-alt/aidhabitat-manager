@@ -12,6 +12,7 @@ import '../components/brand_colors.dart';
 import '../components/soft_transitions.dart';
 import '../models/types.dart';
 import '../services/references_service.dart';
+import '../services/connectivity_service.dart';
 import '../services/route_service.dart';
 import '../services/visit_date_time.dart';
 
@@ -699,11 +700,23 @@ class _NextVisitBanner extends StatefulWidget {
 class _NextVisitBannerState extends State<_NextVisitBanner> {
   Duration? _driveTime;
   String? _routedAddressKey;
+  StreamSubscription<bool>? _connectivitySubscription;
 
   @override
   void initState() {
     super.initState();
+    _connectivitySubscription = ConnectivityService().offlineStream.listen((
+      offline,
+    ) {
+      if (!offline) _refreshCurrentRoute();
+    });
     _maybeFetchRoute();
+  }
+
+  @override
+  void dispose() {
+    _connectivitySubscription?.cancel();
+    super.dispose();
   }
 
   @override
@@ -714,18 +727,53 @@ class _NextVisitBannerState extends State<_NextVisitBanner> {
 
   void _maybeFetchRoute() {
     final nv = widget.nextVisit;
+    if (nv == null) {
+      _routedAddressKey = null;
+      _driveTime = null;
+      return;
+    }
+    final addr = DashboardScreen.buildFullAddress(nv.dossier.patient);
+    if (addr.isEmpty) return;
+    final routeKey = '${nv.dossier.id}|${nv.dossier.visitDate ?? ''}|$addr';
+    if (_routedAddressKey == routeKey) return;
+    _routedAddressKey = routeKey;
+    _driveTime = null;
+    // ignore: discarded_futures
+    _loadCachedThenRefresh(routeKey, addr);
+  }
+
+  void _refreshCurrentRoute() {
+    final nv = widget.nextVisit;
     if (nv == null) return;
     final addr = DashboardScreen.buildFullAddress(nv.dossier.patient);
     if (addr.isEmpty) return;
-    if (_routedAddressKey == addr) return;
-    _routedAddressKey = addr;
+    final routeKey = '${nv.dossier.id}|${nv.dossier.visitDate ?? ''}|$addr';
     // ignore: discarded_futures
-    RouteService.instance
-        .drivingDurationByAddress(from: kAidHabitatOrigin, toAddress: addr)
-        .then((d) {
-          if (!mounted) return;
-          setState(() => _driveTime = d);
-        });
+    _refreshRouteFromNetwork(routeKey, addr);
+  }
+
+  Future<void> _loadCachedThenRefresh(String routeKey, String address) async {
+    final cached = await RouteService.instance.drivingDurationByAddress(
+      from: kAidHabitatOrigin,
+      toAddress: address,
+      cacheOnly: true,
+    );
+    if (mounted && _routedAddressKey == routeKey && cached != null) {
+      setState(() => _driveTime = cached);
+    }
+    if (!ConnectivityService().isOffline) {
+      await _refreshRouteFromNetwork(routeKey, address);
+    }
+  }
+
+  Future<void> _refreshRouteFromNetwork(String routeKey, String address) async {
+    final fresh = await RouteService.instance.drivingDurationByAddress(
+      from: kAidHabitatOrigin,
+      toAddress: address,
+      forceRefresh: true,
+    );
+    if (!mounted || _routedAddressKey != routeKey || fresh == null) return;
+    setState(() => _driveTime = fresh);
   }
 
   /// Extrait l'heure (HH:mm) si la `visit_date` ISO contient une partie

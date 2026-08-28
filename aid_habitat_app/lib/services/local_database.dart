@@ -33,7 +33,7 @@ class LocalDatabase {
   static final LocalDatabase instance = LocalDatabase._();
   static const _dbName = 'aid_habitat_offline.db';
   static const _debugFallbackDbName = 'aid_habitat_offline.debug_fallback.db';
-  static const _dbVersion = 20;
+  static const _dbVersion = 21;
 
   Database? _database;
   bool _forceDebugPlaintextFallback = false;
@@ -408,6 +408,21 @@ class LocalDatabase {
     if (oldVersion < 20) {
       await _migrateV19ToV20(db);
     }
+    if (oldVersion < 21) {
+      await _migrateV20ToV21(db);
+    }
+  }
+
+  /// v20 -> v21 : suppression offline-first des éléments Bibliothèque.
+  /// Même principe que les documents : on masque localement la ligne
+  /// pendant que l'opération DELETE attend la prochaine synchronisation.
+  Future<void> _migrateV20ToV21(Database db) async {
+    await _addColumnIfMissing(
+      db,
+      'wiki_items',
+      'pending_delete',
+      'INTEGER NOT NULL DEFAULT 0',
+    );
   }
 
   /// v19 -> v20 : mémorise la version globale du workspace séparément de
@@ -940,7 +955,8 @@ class LocalDatabase {
       updated_at TEXT,
       last_synced_at TEXT NOT NULL,
       pending_image_data_url TEXT,
-      sync_state TEXT NOT NULL DEFAULT 'synced'
+      sync_state TEXT NOT NULL DEFAULT 'synced',
+      pending_delete INTEGER NOT NULL DEFAULT 0
     )
   ''';
 

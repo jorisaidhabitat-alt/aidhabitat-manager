@@ -21,7 +21,11 @@ class WikiRepository {
     // Alphabetical by title, case-insensitive (default collation folds
     // accents too on SQLite). Matches the user's expectation that the
     // Bibliothèque reads like a dictionary.
-    final rows = await db.query('wiki_items', orderBy: 'LOWER(title) ASC');
+    final rows = await db.query(
+      'wiki_items',
+      where: 'pending_delete = 0',
+      orderBy: 'LOWER(title) ASC',
+    );
     final out = <WikiItem>[];
     for (final row in rows) {
       out.add(await _mapRow(row));
@@ -45,12 +49,16 @@ class WikiRepository {
       for (final item in remoteItems) {
         final existing = await txn.query(
           'wiki_items',
-          columns: ['sync_state', 'updated_at'],
+          columns: ['sync_state', 'updated_at', 'pending_delete'],
           where: 'id = ?',
           whereArgs: [item.id],
           limit: 1,
         );
         if (existing.isNotEmpty) {
+          final pendingDelete = existing.first['pending_delete'] as int? ?? 0;
+          if (pendingDelete == 1) {
+            continue;
+          }
           final syncState = existing.first['sync_state'] as String?;
           if (syncState != null && syncState != SyncState.synced.name) {
             // Stratégie LWW (last-writer-wins) — fix 2026-05-07.
@@ -85,6 +93,7 @@ class WikiRepository {
           'last_synced_at': now,
           'pending_image_data_url': null,
           'sync_state': SyncState.synced.name,
+          'pending_delete': 0,
         }, conflictAlgorithm: ConflictAlgorithm.replace);
       }
 
@@ -135,6 +144,7 @@ class WikiRepository {
     required String category,
     required List<String> tags,
     String imageDataUrl = '',
+    String imageUrl = '',
   }) async {
     final db = await _database.database;
     final localId = _generateLocalDraftId();
@@ -144,7 +154,7 @@ class WikiRepository {
       id: localId,
       title: title,
       description: description,
-      imageUrl: '',
+      imageUrl: imageUrl,
       tags: tags,
       category: category,
       createdAt: now,
@@ -157,7 +167,7 @@ class WikiRepository {
         'id': localId,
         'title': title,
         'description': description,
-        'image_url': '',
+        'image_url': imageUrl,
         'tags_json': jsonEncode(tags),
         'category': category,
         'created_at': now,
@@ -167,6 +177,7 @@ class WikiRepository {
             ? null
             : await OfflineVault.instance.sealString(imageDataUrl),
         'sync_state': SyncState.pendingSync.name,
+        'pending_delete': 0,
       });
 
       await _enqueueOperation(txn, {
@@ -180,6 +191,7 @@ class WikiRepository {
             'description': description,
             'category': category,
             'tags': tags,
+            'imageUrl': imageUrl,
             'imageDataUrl': imageDataUrl,
           }),
         ),
@@ -193,6 +205,72 @@ class WikiRepository {
 
     SyncEngine().notify();
     return draft;
+  }
+
+  Future<void> deleteLocalItem(String itemId) async {
+    final db = await _database.database;
+    final rows = await db.query(
+      'wiki_items',
+      columns: const ['sync_state'],
+      where: 'id = ?',
+      whereArgs: [itemId],
+      limit: 1,
+    );
+    if (rows.isEmpty) return;
+
+    final now = DateTime.now().toIso8601String();
+    final wasSynced =
+        (rows.first['sync_state'] as String?) == SyncState.synced.name;
+
+    await db.transaction((txn) async {
+      await txn.delete(
+        'sync_operations',
+        where:
+            'entity_type = ? AND entity_local_id = ? '
+            'AND operation_type IN (?, ?) AND status IN (?, ?)',
+        whereArgs: [
+          'wiki_item',
+          itemId,
+          'create',
+          'update',
+          SyncOperationStatus.pending.name,
+          SyncOperationStatus.failed.name,
+        ],
+      );
+
+      if (!wasSynced || itemId.startsWith('local_draft_')) {
+        await txn.delete('wiki_items', where: 'id = ?', whereArgs: [itemId]);
+        return;
+      }
+
+      await txn.update(
+        'wiki_items',
+        {
+          'pending_delete': 1,
+          'updated_at': now,
+          'sync_state': SyncState.pendingSync.name,
+        },
+        where: 'id = ?',
+        whereArgs: [itemId],
+      );
+
+      await _enqueueOperation(txn, {
+        'id': 'wiki_delete_$itemId',
+        'entity_type': 'wiki_item',
+        'entity_local_id': itemId,
+        'operation_type': 'delete',
+        'payload_json': await OfflineVault.instance.sealString(
+          jsonEncode({'itemId': itemId}),
+        ),
+        'status': SyncOperationStatus.pending.name,
+        'attempt_count': 0,
+        'last_error': null,
+        'created_at': now,
+        'updated_at': now,
+      });
+    });
+
+    SyncEngine().notify();
   }
 
   /// Updates an existing wiki item locally and enqueues a sync operation.

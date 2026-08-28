@@ -2758,13 +2758,14 @@ class _DateOfBirthField extends StatelessWidget {
           ),
           const SizedBox(height: 5),
         ],
-        // Refonte 2026-05-13 — aligné sur FormTextField (vp-input) :
-        // border-radius pill (999), padding h:14 v:8, fontSize 14.
+        // Hauteur fixe identique aux champs d'année d'Accessibilité :
+        // l'apparition du bouton d'effacement ne doit pas agrandir le cadre.
         InkWell(
           onTap: () => _pickDate(context),
           borderRadius: BorderRadius.circular(999),
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            height: 40,
+            padding: const EdgeInsets.symmetric(horizontal: 14),
             decoration: BoxDecoration(
               color: Colors.white,
               border: Border.all(color: Color(0xFFB9C0C7)),

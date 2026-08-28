@@ -126,6 +126,29 @@ const checks = [
     file: 'package.json',
     assert: (source) => source.includes('"release:ci-check": "node tools/check-github-actions-head.mjs"'),
   },
+  {
+    name: 'API Docker image runs in API-only public surface mode',
+    file: 'Dockerfile.api',
+    assert: (source) => source.includes('AIDHABITAT_API_ONLY=1'),
+  },
+  {
+    name: 'API-only public surface refuses root and OpenAPI paths',
+    file: 'server/index.mjs',
+    assert: (source) => (
+      source.includes('function isApiOnlyPublicSurface(req)')
+      && source.includes("app.all(['/', '/openapi.json']")
+      && source.includes("res.status(404).json")
+    ),
+  },
+  {
+    name: 'Live stack check verifies public API unavailable paths',
+    file: 'tools/check-live-stack.mjs',
+    assert: (source) => (
+      source.includes("checkUnavailablePublicEndpoint('/');")
+      && source.includes("checkUnavailablePublicEndpoint('/openapi.json');")
+      && source.includes("for (const method of ['GET', 'HEAD'])")
+    ),
+  },
 ];
 
 const failures = [];

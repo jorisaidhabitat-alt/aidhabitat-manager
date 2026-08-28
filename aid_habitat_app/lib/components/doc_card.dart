@@ -73,7 +73,7 @@ class DocCard extends StatefulWidget {
   final bool selected;
   final bool selectionMode;
   final VoidCallback onTap;
-  final VoidCallback onLongPress;
+  final VoidCallback onSelect;
   final VoidCallback onToggleSelect;
   final VoidCallback onDelete;
   final VoidCallback onDownload;
@@ -87,7 +87,7 @@ class DocCard extends StatefulWidget {
     required this.selected,
     required this.selectionMode,
     required this.onTap,
-    required this.onLongPress,
+    required this.onSelect,
     required this.onToggleSelect,
     required this.onDelete,
     required this.onDownload,
@@ -102,6 +102,127 @@ class DocCard extends StatefulWidget {
 
 class _DocCardState extends State<DocCard> {
   bool _hovering = false;
+
+  void _handleAction(String value) {
+    switch (value) {
+      case 'select':
+        widget.onSelect();
+        break;
+      case 'download':
+        widget.onDownload();
+        break;
+      case 'rename':
+        widget.onRename();
+        break;
+      case 'share':
+        widget.onShare();
+        break;
+      case 'duplicate':
+        widget.onDuplicate();
+        break;
+      case 'delete':
+        widget.onDelete();
+        break;
+    }
+  }
+
+  List<PopupMenuEntry<String>> _buildActionItems({
+    required bool includeSelect,
+  }) {
+    return [
+      if (includeSelect) ...const [
+        PopupMenuItem<String>(
+          value: 'select',
+          child: Row(
+            children: [
+              Icon(LucideIcons.checkSquare, size: 16, color: kBrandDarkPurple),
+              SizedBox(width: 10),
+              Text('Sélectionner'),
+            ],
+          ),
+        ),
+        PopupMenuDivider(),
+      ],
+      const PopupMenuItem<String>(
+        value: 'download',
+        child: Row(
+          children: [
+            Icon(LucideIcons.download, size: 16, color: kBrandDarkPurple),
+            SizedBox(width: 10),
+            Text('Télécharger'),
+          ],
+        ),
+      ),
+      const PopupMenuDivider(),
+      const PopupMenuItem<String>(
+        value: 'rename',
+        child: Row(
+          children: [
+            Icon(LucideIcons.pencil, size: 16, color: kBrandDarkPurple),
+            SizedBox(width: 10),
+            Text('Renommer'),
+          ],
+        ),
+      ),
+      const PopupMenuItem<String>(
+        value: 'share',
+        child: Row(
+          children: [
+            Icon(LucideIcons.share2, size: 16, color: kBrandDarkPurple),
+            SizedBox(width: 10),
+            Text('Partager'),
+          ],
+        ),
+      ),
+      const PopupMenuItem<String>(
+        value: 'duplicate',
+        child: Row(
+          children: [
+            Icon(LucideIcons.copy, size: 16, color: kBrandDarkPurple),
+            SizedBox(width: 10),
+            Text('Dupliquer'),
+          ],
+        ),
+      ),
+      const PopupMenuDivider(),
+      const PopupMenuItem<String>(
+        value: 'delete',
+        child: Row(
+          children: [
+            Icon(LucideIcons.trash2, size: 16, color: Colors.red),
+            SizedBox(width: 10),
+            Text('Supprimer', style: TextStyle(color: Colors.red)),
+          ],
+        ),
+      ),
+    ];
+  }
+
+  Future<void> _showLongPressMenu() async {
+    final box = context.findRenderObject() as RenderBox?;
+    final overlay =
+        Overlay.of(context).context.findRenderObject() as RenderBox?;
+    if (box == null || overlay == null) return;
+
+    final anchor = box.localToGlobal(
+      Offset(box.size.width / 2, box.size.height / 2),
+      ancestor: overlay,
+    );
+    final value = await showMenu<String>(
+      context: context,
+      position: RelativeRect.fromLTRB(
+        anchor.dx,
+        anchor.dy,
+        overlay.size.width - anchor.dx,
+        overlay.size.height - anchor.dy,
+      ),
+      color: Colors.white,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      items: _buildActionItems(includeSelect: true),
+    );
+    if (!mounted || value == null) return;
+    _handleAction(value);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -148,7 +269,7 @@ class _DocCardState extends State<DocCard> {
         clipBehavior: Clip.antiAlias,
         child: InkWell(
           onTap: widget.onTap,
-          onLongPress: widget.onLongPress,
+          onLongPress: selMode ? widget.onToggleSelect : _showLongPressMenu,
           borderRadius: BorderRadius.circular(16),
           splashColor: Colors.transparent,
           highlightColor: Colors.transparent,
@@ -271,96 +392,9 @@ class _DocCardState extends State<DocCard> {
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
                         ),
-                        onSelected: (value) {
-                          if (value == 'download') {
-                            widget.onDownload();
-                          } else if (value == 'rename') {
-                            widget.onRename();
-                          } else if (value == 'share') {
-                            widget.onShare();
-                          } else if (value == 'duplicate') {
-                            widget.onDuplicate();
-                          } else if (value == 'delete') {
-                            widget.onDelete();
-                          }
-                        },
-                        itemBuilder: (ctx) => const [
-                          PopupMenuItem<String>(
-                            value: 'download',
-                            child: Row(
-                              children: [
-                                Icon(
-                                  LucideIcons.download,
-                                  size: 16,
-                                  color: kBrandDarkPurple,
-                                ),
-                                SizedBox(width: 10),
-                                Text('Télécharger'),
-                              ],
-                            ),
-                          ),
-                          PopupMenuDivider(),
-                          PopupMenuItem<String>(
-                            value: 'rename',
-                            child: Row(
-                              children: [
-                                Icon(
-                                  LucideIcons.pencil,
-                                  size: 16,
-                                  color: kBrandDarkPurple,
-                                ),
-                                SizedBox(width: 10),
-                                Text('Renommer'),
-                              ],
-                            ),
-                          ),
-                          PopupMenuItem<String>(
-                            value: 'share',
-                            child: Row(
-                              children: [
-                                Icon(
-                                  LucideIcons.share2,
-                                  size: 16,
-                                  color: kBrandDarkPurple,
-                                ),
-                                SizedBox(width: 10),
-                                Text('Partager'),
-                              ],
-                            ),
-                          ),
-                          PopupMenuItem<String>(
-                            value: 'duplicate',
-                            child: Row(
-                              children: [
-                                Icon(
-                                  LucideIcons.copy,
-                                  size: 16,
-                                  color: kBrandDarkPurple,
-                                ),
-                                SizedBox(width: 10),
-                                Text('Dupliquer'),
-                              ],
-                            ),
-                          ),
-                          PopupMenuDivider(),
-                          PopupMenuItem<String>(
-                            value: 'delete',
-                            child: Row(
-                              children: [
-                                Icon(
-                                  LucideIcons.trash2,
-                                  size: 16,
-                                  color: Colors.red,
-                                ),
-                                SizedBox(width: 10),
-                                Text(
-                                  'Supprimer',
-                                  style: TextStyle(color: Colors.red),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
+                        onSelected: _handleAction,
+                        itemBuilder: (ctx) =>
+                            _buildActionItems(includeSelect: false),
                       ),
                   ],
                 ),

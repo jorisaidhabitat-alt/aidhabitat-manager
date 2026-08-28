@@ -92,6 +92,37 @@ async function checkJsonEndpoint(pathname, expectedStatus, { required = true } =
   }
 }
 
+async function checkUnavailablePublicEndpoint(pathname) {
+  for (const method of ['GET', 'HEAD']) {
+    const url = new URL(pathname, apiBase);
+    const name = `api:${method} ${pathname}`;
+    try {
+      const response = await fetchWithTimeout(url, {
+        method,
+        headers: {
+          Origin: appBase.origin,
+        },
+      });
+      if (![403, 404].includes(response.status)) {
+        fail(name, `HTTP ${response.status} ${response.statusText || ''}`.trim());
+        continue;
+      }
+
+      if (method === 'GET') {
+        const contentType = response.headers.get('content-type') || '';
+        if (!contentType.includes('application/json')) {
+          fail(name, `Content-Type inattendu (${contentType || 'absent'})`);
+          continue;
+        }
+      }
+
+      mark(name, { status: response.status });
+    } catch (error) {
+      fail(name, error.name === 'AbortError' ? `timeout ${timeoutMs} ms` : error.message);
+    }
+  }
+}
+
 async function runWebReleaseCheck() {
   const name = 'app:pwa-release-check';
   return new Promise((resolve) => {
@@ -122,6 +153,8 @@ await checkJsonEndpoint('/api/health/live', 'live');
 if (!skipReady) {
   await checkJsonEndpoint('/api/health/ready', 'ready');
 }
+await checkUnavailablePublicEndpoint('/');
+await checkUnavailablePublicEndpoint('/openapi.json');
 
 if (failures.length > 0) {
   console.error('[live-stack-check] ÉCHEC');

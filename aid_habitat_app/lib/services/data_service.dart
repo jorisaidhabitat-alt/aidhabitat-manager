@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -40,6 +41,13 @@ class DataService {
       AccessMembersRepository();
   final Map<String, Future<bool>> _documentRefreshInFlight =
       <String, Future<bool>>{};
+  final StreamController<void> _dossierRecordsController =
+      StreamController<void>.broadcast(sync: true);
+
+  /// Émis dès que les lignes principales dossier/patient/logement sont
+  /// disponibles dans SQLite. Les préchargements VAD, notes et référentiels
+  /// peuvent continuer ensuite sans retarder le dashboard.
+  Stream<void> get onDossierRecordsUpdated => _dossierRecordsController.stream;
 
   Future<void> initialize() async {
     await _dossierRepository.initialize();
@@ -176,6 +184,7 @@ class DataService {
     required String category,
     required List<String> tags,
     String imageDataUrl = '',
+    String imageUrl = '',
   }) async {
     return _wikiRepository.createLocalDraft(
       title: title,
@@ -183,6 +192,7 @@ class DataService {
       category: category,
       tags: tags,
       imageDataUrl: imageDataUrl,
+      imageUrl: imageUrl,
     );
   }
 
@@ -433,6 +443,10 @@ class DataService {
     String? newImageDataUrl,
   }) async {
     return _wikiRepository.updateLocalItem(item, imageDataUrl: newImageDataUrl);
+  }
+
+  Future<void> deleteWikiItem(String itemId) {
+    return _wikiRepository.deleteLocalItem(itemId);
   }
 
   Future<List<DocItem>> fetchDocuments(String patientId) async {
@@ -955,6 +969,7 @@ class DataService {
       final rawPayloads = await _nocodbApiClient.fetchDossierPayloads();
       if (rawPayloads.isEmpty) return false;
       await _dossierRepository.mergeRemoteDossierPayloads(rawPayloads);
+      _dossierRecordsController.add(null);
       // Les données globales doivent être terminées AVANT que le
       // SyncEngine annonce la fin du pull. L'ancien fire-and-forget
       // pouvait laisser Bibliothèque et Caisses vides après une
@@ -1012,6 +1027,7 @@ class DataService {
       final rawPayloads = await _nocodbApiClient.fetchDossierPayloads();
       if (rawPayloads.isEmpty) return false;
       await _dossierRepository.mergeRemoteDossierPayloads(rawPayloads);
+      _dossierRecordsController.add(null);
       return true;
     } catch (_) {
       return false;

@@ -1574,6 +1574,7 @@ class NocodbSyncService {
         description: description,
         category: category,
         tags: tags,
+        imageUrl: payload['imageUrl']?.toString() ?? '',
         imageDataUrl: imageDataUrl,
       );
       // Replace the local draft row (id = localId) with the remote one.
@@ -1636,6 +1637,18 @@ class NocodbSyncService {
         },
         where: 'id = ?',
         whereArgs: [itemId],
+      );
+      return;
+    }
+
+    if (operation.operationType == 'delete') {
+      final itemId = payload['itemId']?.toString() ?? operation.entityLocalId;
+      if (itemId.isEmpty) return;
+      await _apiClient.deleteWikiItem(itemId);
+      await db.delete(
+        'wiki_items',
+        where: 'id IN (?, ?)',
+        whereArgs: [operation.entityLocalId, itemId],
       );
       return;
     }
