@@ -1,7 +1,6 @@
-# Plateforme cible iOS minimum. 13.0 = aligné sur AppFrameworkInfo.plist
-# (`MinimumOSVersion`) et sur la baseline Flutter 3.x. Couvre ~99% du
-# parc iPad/iPhone actif.
-platform :ios, '13.0'
+# Plateforme cible iOS minimum alignée sur le SDK iOS le plus récent
+# disponible dans le Xcode local utilisé pour archiver.
+platform :ios, '26.5'
 
 # CocoaPods analytics sends network stats synchronously affecting flutter build latency.
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'
@@ -41,5 +40,8 @@ end
 post_install do |installer|
   installer.pods_project.targets.each do |target|
     flutter_additional_ios_build_settings(target)
+    target.build_configurations.each do |config|
+      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '26.5'
+    end
   end
 end
