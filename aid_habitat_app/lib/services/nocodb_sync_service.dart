@@ -184,9 +184,17 @@ class NocodbSyncService {
     // sur des ops que la prochaine tentative ferait réussir).
     try {
       final rehabCount = await _syncRepository.rehabilitateTransientFailures();
+      final recoveredCount = await _syncRepository
+          .recoverInterruptedDocumentUploads();
       if (rehabCount > 0) {
         // ignore: avoid_print
         print('[sync] $rehabCount opération(s) réhabilitée(s) depuis failed');
+      }
+      if (recoveredCount > 0) {
+        // ignore: avoid_print
+        print(
+          '[sync] $recoveredCount upload(s) document repris après interruption',
+        );
       }
     } catch (_) {
       // La réhabilitation est best-effort : une erreur ne doit pas

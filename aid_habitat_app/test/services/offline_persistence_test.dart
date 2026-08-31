@@ -57,6 +57,9 @@ void main() {
     required String id,
     required String status,
     required String payload,
+    String entityType = 'note_page',
+    String entityLocalId = 'note_test_0',
+    String operationType = 'upsert',
     int attempts = 0,
     String? error,
     DateTime? updatedAt,
@@ -64,9 +67,9 @@ void main() {
     final now = DateTime.now();
     return db.insert('sync_operations', {
       'id': id,
-      'entity_type': 'note_page',
-      'entity_local_id': 'note_test_0',
-      'operation_type': 'upsert',
+      'entity_type': entityType,
+      'entity_local_id': entityLocalId,
+      'operation_type': operationType,
       'payload_json': payload,
       'status': status,
       'attempt_count': attempts,
@@ -112,6 +115,41 @@ void main() {
         final runnable = await repositoryAfterRestart.fetchRunnableOperations();
         expect(runnable, hasLength(1));
         expect(runnable.single.payloadJson, payload);
+      },
+    );
+
+    test(
+      'un upload document running trop ancien est remis en attente',
+      () async {
+        const payload = '{"localPath":"/tmp/justificatif-gir.pdf"}';
+        await insertOperation(
+          id: 'sync_replace_doc_gir',
+          status: 'running',
+          payload: payload,
+          entityType: 'document',
+          entityLocalId: 'doc_gir',
+          operationType: 'upload_file',
+          attempts: 1,
+          updatedAt: DateTime.now().subtract(const Duration(minutes: 12)),
+        );
+
+        final repository = SyncRepository(databaseProvider: () async => db);
+        final recovered = await repository.recoverInterruptedDocumentUploads(
+          maxRunningAge: const Duration(minutes: 10),
+        );
+
+        expect(recovered, 1);
+        final rows = await db.query(
+          'sync_operations',
+          where: 'id = ?',
+          whereArgs: const ['sync_replace_doc_gir'],
+        );
+        expect(rows.single['status'], 'pending');
+        expect(rows.single['payload_json'], payload);
+        expect(rows.single['attempt_count'], 0);
+
+        final runnable = await repository.fetchRunnableOperations();
+        expect(runnable.single.id, 'sync_replace_doc_gir');
       },
     );
 

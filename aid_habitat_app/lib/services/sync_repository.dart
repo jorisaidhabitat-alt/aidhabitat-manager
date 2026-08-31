@@ -464,6 +464,46 @@ class SyncRepository {
     return n;
   }
 
+  /// Récupère les uploads documents interrompus en plein vol.
+  ///
+  /// Si l'app est quittée pendant un gros upload, la ligne peut rester en
+  /// `running`. Contrairement aux updates métier, l'upload de document est
+  /// idempotent côté serveur grâce à `documentLocalId`; le repasser en
+  /// `pending` après un délai court est donc sûr et évite une pastille orange
+  /// coincée sans retry visible.
+  Future<int> recoverInterruptedDocumentUploads({
+    Duration maxRunningAge = const Duration(minutes: 2),
+  }) async {
+    final db = await _database.database;
+    final cutoff = DateTime.now().subtract(maxRunningAge).toIso8601String();
+    final now = DateTime.now().toIso8601String();
+    final recovered = await db.rawUpdate(
+      '''
+      UPDATE sync_operations
+      SET status = ?, attempt_count = 0, last_error = ?, updated_at = ?
+      WHERE status = ?
+        AND entity_type = 'document'
+        AND operation_type = 'upload_file'
+        AND updated_at < ?
+      ''',
+      [
+        SyncOperationStatus.pending.name,
+        'Upload document récupéré après interruption',
+        now,
+        SyncOperationStatus.running.name,
+        cutoff,
+      ],
+    );
+    if (recovered > 0) {
+      // ignore: avoid_print
+      print(
+        '[sync] recoverInterruptedDocumentUploads : '
+        '$recovered op(s) running → pending',
+      );
+    }
+    return recovered;
+  }
+
   Future<int> rehabilitateTransientFailures() async {
     final db = await _database.database;
     final ageCutoff = DateTime.now()

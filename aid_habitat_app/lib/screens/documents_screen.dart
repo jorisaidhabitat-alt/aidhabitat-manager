@@ -39,6 +39,7 @@ import '../services/document_repository.dart';
 import '../services/media_cache_service.dart';
 import '../services/native_file_protection.dart';
 import '../services/pencil_interaction_service.dart';
+import '../services/pdf_rotation_service.dart';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -161,8 +162,9 @@ class _DocumentsScreenState extends State<DocumentsScreen>
     //  - au retour foreground (changement d'app puis retour)
     //  - à la reconnexion réseau
     //  - à la re-connexion utilisateur (logout/login)
-    //  - au prochain `_loadDocuments` déclenché par une action locale
-    //    (ajout, suppression, etc.)
+    //  - au pull-to-refresh explicite.
+    // Les actions locales (ajout, suppression, rotation, renommage...)
+    // relisent seulement SQLite pour rester instantanées.
   }
 
   @override
@@ -431,7 +433,7 @@ class _DocumentsScreenState extends State<DocumentsScreen>
         tags: const [],
         title: autoTitle,
       );
-      await _loadDocuments(silent: true);
+      await _loadDocuments(silent: true, refreshRemote: false);
       if (!mounted) return;
       _showSnack(
         compressed.wasRecompressed
@@ -540,7 +542,7 @@ class _DocumentsScreenState extends State<DocumentsScreen>
           tags: const [],
           title: autoTitle,
         );
-        await _loadDocuments(silent: true);
+        await _loadDocuments(silent: true, refreshRemote: false);
         if (!mounted) return;
         _showSnack('Document enregistré localement.');
       } catch (err) {
@@ -574,7 +576,7 @@ class _DocumentsScreenState extends State<DocumentsScreen>
         tags: const [],
         title: autoTitle,
       );
-      await _loadDocuments(silent: true);
+      await _loadDocuments(silent: true, refreshRemote: false);
       if (!mounted) return;
       _showSnack('Document enregistré localement.');
     } catch (err) {
@@ -597,7 +599,7 @@ class _DocumentsScreenState extends State<DocumentsScreen>
     );
     if (confirmed != true || !mounted) return;
     await _documentRepository.deleteDocument(doc.id);
-    await _loadDocuments(silent: true);
+    await _loadDocuments(silent: true, refreshRemote: false);
     if (mounted) _showSnack('Document supprimé.');
   }
 
@@ -658,7 +660,7 @@ class _DocumentsScreenState extends State<DocumentsScreen>
                 title: newTitle,
                 tags: doc.tags,
               );
-              await _loadDocuments(silent: true);
+              await _loadDocuments(silent: true, refreshRemote: false);
               if (mounted) _showSnack('Document mis à jour.');
             },
           );
@@ -670,15 +672,12 @@ class _DocumentsScreenState extends State<DocumentsScreen>
       await Future<void>.delayed(const Duration(milliseconds: 180));
       _isDocumentPreviewOpen = false;
     }
-    // Refresh à la fermeture de la modale : si l'utilisateur a sauvé
-    // une annotation, `enqueueAnnotatedReuploadBytes` a écrit un nouveau
-    // `local_file_data_url` côté SQLite. Sans ce reload, la grille
-    // continuait d'afficher l'ancienne vignette pendant ~10s (le temps
-    // du polling auto). Avec, le thumbnail bascule immédiatement sur
-    // la version annotée — `DocThumbnail.didUpdateWidget` invalide
-    // son cache mémoire dès que `dataUrl` change.
+    // Refresh local à la fermeture de la modale : si l'utilisateur a sauvé
+    // une annotation ou une rotation, SQLite contient déjà la nouvelle
+    // version. On évite volontairement un pull distant ici pour ne pas faire
+    // recharger tout l'espace document après chaque save.
     if (mounted) {
-      await _loadDocuments(silent: true);
+      await _loadDocuments(silent: true, refreshRemote: false);
     }
   }
 
@@ -1092,7 +1091,7 @@ class _DocumentsScreenState extends State<DocumentsScreen>
       title: trimmed,
       tags: doc.tags,
     );
-    await _loadDocuments(silent: true);
+    await _loadDocuments(silent: true, refreshRemote: false);
     if (mounted) _showSnack('Document renommé.');
   }
 
@@ -1252,7 +1251,7 @@ class _DocumentsScreenState extends State<DocumentsScreen>
     await _dataService.reorderVisitCategoryDocuments(
       orderedDocumentIds: orderIds,
     );
-    await _loadDocuments(silent: true);
+    await _loadDocuments(silent: true, refreshRemote: false);
   }
 
   // ----- Build -----
@@ -1410,7 +1409,7 @@ class _DocumentsScreenState extends State<DocumentsScreen>
           failed += 1;
         }
       }
-      await _loadDocuments(silent: true);
+      await _loadDocuments(silent: true, refreshRemote: false);
       if (!mounted) return;
       if (success > 0 && failed == 0) {
         _showSnack(
@@ -1630,7 +1629,7 @@ class _DocumentsScreenState extends State<DocumentsScreen>
     }
     if (!mounted) return;
     _exitSelectionMode();
-    await _loadDocuments(silent: true);
+    await _loadDocuments(silent: true, refreshRemote: false);
     if (mounted) {
       _showSnack('$count document${count > 1 ? 's supprimés' : ' supprimé'}.');
     }
@@ -2575,19 +2574,78 @@ class _PreviewScreenState extends State<_PreviewScreen> {
   Future<void> _saveRotation() async {
     final delta = _pendingRotationQuarterTurns;
     if (delta == 0) return;
-    final source = await _sourceBytes();
-    if (source == null || source.isEmpty) {
-      throw StateError('fichier indisponible');
-    }
 
     if (_looksLikePdf()) {
-      final rotated = await _rotatePdf(source, delta);
       final original = widget.doc.name.trim().isEmpty
           ? '${widget.doc.title}.pdf'
           : widget.doc.name;
       final fileName = original.toLowerCase().endsWith('.pdf')
           ? original
           : '$original.pdf';
+
+      final rotationService = PdfRotationService.instance;
+      var nativeSourcePath = '';
+      final localPath = widget.doc.localPath?.trim() ?? '';
+      if (rotationService.supportsNativeRotation) {
+        if (localPath.isNotEmpty && await File(localPath).exists()) {
+          nativeSourcePath = localPath;
+        }
+        final previewPath = _pdfWrapperKey.currentState?.pdfPath.trim() ?? '';
+        if (nativeSourcePath.isEmpty &&
+            previewPath.isNotEmpty &&
+            await File(previewPath).exists()) {
+          nativeSourcePath = previewPath;
+        }
+        final remoteUrl = widget.doc.url?.trim() ?? '';
+        if (nativeSourcePath.isEmpty && remoteUrl.isNotEmpty) {
+          final cached = await MediaCacheService.instance.fetch(
+            remoteUrl,
+            headers: MediaCacheService.authHeaders(),
+          );
+          if (cached != null && await cached.exists()) {
+            nativeSourcePath = cached.path;
+          }
+        }
+      }
+
+      if (nativeSourcePath.isNotEmpty) {
+        final rotatedPath = await rotationService.rotatePdfFile(
+          sourcePath: nativeSourcePath,
+          quarterTurns: delta,
+        );
+        if (rotatedPath != null) {
+          final rotatedFile = File(rotatedPath);
+          try {
+            if (await rotatedFile.exists()) {
+              await DocumentRepository().enqueueReplacementFile(
+                documentId: widget.doc.id,
+                sourceFile: rotatedFile,
+                fileName: fileName,
+                mimeType: 'application/pdf',
+              );
+              return;
+            }
+          } finally {
+            if (rotatedPath != nativeSourcePath) {
+              try {
+                await rotatedFile.delete();
+              } catch (_) {
+                // Temp cleanup best-effort.
+              }
+            }
+          }
+        }
+      }
+
+      if (rotationService.supportsNativeRotation) {
+        throw StateError('fichier PDF local indisponible pour rotation');
+      }
+
+      final source = await _sourceBytes();
+      if (source == null || source.isEmpty) {
+        throw StateError('fichier indisponible');
+      }
+      final rotated = await _rotatePdf(source, delta);
       await DocumentRepository().enqueueReplacementBytes(
         documentId: widget.doc.id,
         bytes: rotated,
@@ -2597,6 +2655,10 @@ class _PreviewScreenState extends State<_PreviewScreen> {
       return;
     }
 
+    final source = await _sourceBytes();
+    if (source == null || source.isEmpty) {
+      throw StateError('fichier indisponible');
+    }
     Uint8List imageSource = source;
     final annotator = _annotatorKey.currentState;
     if (annotator != null) {

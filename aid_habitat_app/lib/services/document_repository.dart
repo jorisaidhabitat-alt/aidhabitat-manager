@@ -798,15 +798,16 @@ class DocumentRepository {
     final tagsJson = row['tags_json'] as String? ?? '[]';
     final tags = (jsonDecode(tagsJson) as List<dynamic>).cast<String>();
 
-    // Annule toute upload en attente pour ce doc — on remplace par la
-    // version annotée.
+    // Annule toute upload encore en attente/en cours/en échec pour ce doc :
+    // on remplace par la version annotée la plus récente.
     await db.delete(
       'sync_operations',
-      where: 'entity_local_id = ? AND entity_type = ? AND status IN (?, ?)',
+      where: 'entity_local_id = ? AND entity_type = ? AND status IN (?, ?, ?)',
       whereArgs: [
         documentId,
         'document',
         SyncOperationStatus.pending.name,
+        SyncOperationStatus.running.name,
         SyncOperationStatus.failed.name,
       ],
     );
@@ -928,11 +929,12 @@ class DocumentRepository {
 
     await db.delete(
       'sync_operations',
-      where: 'entity_local_id = ? AND entity_type = ? AND status IN (?, ?)',
+      where: 'entity_local_id = ? AND entity_type = ? AND status IN (?, ?, ?)',
       whereArgs: [
         documentId,
         'document',
         SyncOperationStatus.pending.name,
+        SyncOperationStatus.running.name,
         SyncOperationStatus.failed.name,
       ],
     );
@@ -982,6 +984,117 @@ class DocumentRepository {
     _notifyChanged(patientId: patientId, reason: 'replace_file');
   }
 
+  /// Remplace le contenu d'un document depuis un fichier local déjà prêt.
+  ///
+  /// Utilisé par la rotation PDF native iOS : PDFKit écrit un PDF temporaire
+  /// dont seules les pages portent une rotation. On copie ce fichier dans le
+  /// stockage protégé du document, puis on garde la même op `upload_file`
+  /// idempotente que [enqueueReplacementBytes].
+  Future<void> enqueueReplacementFile({
+    required String documentId,
+    required File sourceFile,
+    required String fileName,
+    required String mimeType,
+  }) async {
+    final db = await _database.database;
+    final rows = await db.query(
+      'documents',
+      where: 'local_id = ?',
+      whereArgs: [documentId],
+      limit: 1,
+    );
+    if (rows.isEmpty) return;
+    final row = rows.first;
+    final patientId = row['patient_local_id'] as String;
+    final title = row['title'] as String? ?? 'Document';
+    final tags = (jsonDecode(row['tags_json'] as String? ?? '[]') as List)
+        .cast<String>();
+    final extension = p.extension(fileName).replaceFirst('.', '').toLowerCase();
+    final now = DateTime.now().toIso8601String();
+
+    final appDir = await getApplicationDocumentsDirectory();
+    final existingPath = row['local_file_path'] as String?;
+    var localPath = resolveReplacementDocumentPath(
+      applicationDocumentsPath: appDir.path,
+      existingPath: existingPath,
+      patientId: patientId,
+      documentId: documentId,
+      fileName: fileName,
+      mimeType: mimeType,
+    );
+
+    final entityType = await FileSystemEntity.type(
+      localPath,
+      followLinks: false,
+    );
+    if (entityType == FileSystemEntityType.directory ||
+        entityType == FileSystemEntityType.link) {
+      localPath = resolveReplacementDocumentPath(
+        applicationDocumentsPath: appDir.path,
+        existingPath: null,
+        patientId: patientId,
+        documentId: documentId,
+        fileName: fileName,
+        mimeType: mimeType,
+      );
+    }
+    await NativeFileProtection.instance.copyProtectedFile(
+      sourceFile,
+      localPath,
+    );
+
+    await db.delete(
+      'sync_operations',
+      where: 'entity_local_id = ? AND entity_type = ? AND status IN (?, ?, ?)',
+      whereArgs: [
+        documentId,
+        'document',
+        SyncOperationStatus.pending.name,
+        SyncOperationStatus.running.name,
+        SyncOperationStatus.failed.name,
+      ],
+    );
+    await db.update(
+      'documents',
+      {
+        'local_file_data_url': null,
+        'file_ext': extension,
+        'mime_type': mimeType,
+        'file_name': fileName,
+        'local_file_path': localPath,
+        'sync_state': SyncState.pendingSync.name,
+        'updated_at': now,
+      },
+      where: 'local_id = ?',
+      whereArgs: [documentId],
+    );
+    await db.insert('sync_operations', {
+      'id':
+          'sync_replace_${documentId}_${DateTime.now().microsecondsSinceEpoch}',
+      'entity_type': 'document',
+      'entity_local_id': documentId,
+      'operation_type': 'upload_file',
+      'payload_json': await OfflineVault.instance.sealString(
+        jsonEncode({
+          'patientLocalId': patientId,
+          'documentLocalId': documentId,
+          'localPath': localPath,
+          'title': title,
+          'fileName': fileName,
+          'mimeType': mimeType,
+          'tags': tags,
+        }),
+      ),
+      'status': SyncOperationStatus.pending.name,
+      'attempt_count': 0,
+      'last_error': null,
+      'created_at': now,
+      'updated_at': now,
+    });
+    SyncEngine().notify();
+    _notifyChanged(patientId: patientId, reason: 'replace_file');
+  }
+
   /// Re-upload d'un document existant avec le même `documentLocalId` et un
   /// fichier "flattened" (image + annotations aplaties). Le serveur remplace
   /// l'asset existant sur dedup par `documentLocalId`. Appelé après un save
@@ -1011,15 +1124,16 @@ class DocumentRepository {
     final tagsJson = row['tags_json'] as String? ?? '[]';
     final tags = (jsonDecode(tagsJson) as List<dynamic>).cast<String>();
 
-    // Supprime toute opération d'upload en attente pour ce doc — on ne veut
-    // pas pousser successivement deux versions.
+    // Supprime toute opération d'upload en attente/en cours/en échec pour ce
+    // doc : on ne veut pas pousser successivement deux versions.
     await db.delete(
       'sync_operations',
-      where: 'entity_local_id = ? AND entity_type = ? AND status IN (?, ?)',
+      where: 'entity_local_id = ? AND entity_type = ? AND status IN (?, ?, ?)',
       whereArgs: [
         documentId,
         'document',
         SyncOperationStatus.pending.name,
+        SyncOperationStatus.running.name,
         SyncOperationStatus.failed.name,
       ],
     );
@@ -1293,11 +1407,12 @@ class DocumentRepository {
         await txn.delete(
           'sync_operations',
           where:
-              'entity_local_id = ? AND operation_type = ? AND status IN (?, ?)',
+              'entity_local_id = ? AND operation_type = ? AND status IN (?, ?, ?)',
           whereArgs: [
             localId,
             'upload_file',
             SyncOperationStatus.pending.name,
+            SyncOperationStatus.running.name,
             SyncOperationStatus.failed.name,
           ],
         );
@@ -1376,15 +1491,17 @@ class DocumentRepository {
       whereArgs: [documentId],
     );
 
-    // Annule toute upload encore pending/failed pour ce doc — l'upload
-    // est moot (le doc est en train d'être supprimé).
+    // Annule toute upload encore en attente/en cours/en échec pour ce doc :
+    // l'upload est moot (le doc est en train d'être supprimé).
     await db.delete(
       'sync_operations',
-      where: 'entity_local_id = ? AND operation_type = ? AND status IN (?, ?)',
+      where:
+          'entity_local_id = ? AND operation_type = ? AND status IN (?, ?, ?)',
       whereArgs: [
         documentId,
         'upload_file',
         SyncOperationStatus.pending.name,
+        SyncOperationStatus.running.name,
         SyncOperationStatus.failed.name,
       ],
     );

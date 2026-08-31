@@ -499,7 +499,9 @@ class DataService {
     //    sur les autres devices.
     try {
       final rehabbed = await _syncRepository.rehabFailedDocumentUploads();
-      if (rehabbed > 0) {
+      final recovered = await _syncRepository
+          .recoverInterruptedDocumentUploads();
+      if (rehabbed > 0 || recovered > 0) {
         // Notifie le SyncEngine pour qu'il pousse sans attendre les
         // 60 s du timer périodique → le doc apparaît côté serveur
         // dans les secondes qui suivent.
