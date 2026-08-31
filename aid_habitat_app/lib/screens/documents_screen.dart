@@ -14,6 +14,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:image/image.dart' as img;
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:open_filex/open_filex.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart' show PdfPageFormat;
 import 'package:pdf/widgets.dart' as pw;
 import 'package:pdfx/pdfx.dart';
@@ -34,6 +35,7 @@ import '../services/web_file_picker.dart';
 import '../services/web_file_saver.dart';
 import '../services/app_config.dart';
 import '../services/data_service.dart';
+import '../services/document_file_naming.dart';
 import '../services/document_scanner_service.dart';
 import '../services/document_repository.dart';
 import '../services/media_cache_service.dart';
@@ -722,7 +724,7 @@ class _DocumentsScreenState extends State<DocumentsScreen>
   /// Copie le fichier local du document vers un emplacement choisi par
   /// l'utilisateur (Files app, Téléchargements…) via file_picker.
   Future<void> _downloadDocument(DocItem doc) async {
-    final fileName = doc.name.isNotEmpty ? doc.name : '${doc.title}.bin';
+    final fileName = _publicFileNameFor(doc);
     final mime = _mimeTypeFor(doc);
 
     // Web : pas de filesystem accessible. On résout les bytes (data URL ou
@@ -819,20 +821,18 @@ class _DocumentsScreenState extends State<DocumentsScreen>
 
   Future<void> _shareDocument(DocItem doc) async {
     try {
-      final fileName = doc.name.isNotEmpty ? doc.name : '${doc.title}.bin';
+      final fileName = _publicFileNameFor(doc);
       final mime = _mimeTypeFor(doc);
-      XFile sharedFile;
-      final localPath = doc.localPath?.trim() ?? '';
-      if (!kIsWeb && localPath.isNotEmpty && await File(localPath).exists()) {
-        sharedFile = XFile(localPath, name: fileName, mimeType: mime);
-      } else {
-        final bytes = await _resolveDocumentBytes(doc);
-        if (bytes == null) {
-          _showError('Fichier indisponible (vérifiez la connexion).');
-          return;
-        }
-        sharedFile = XFile.fromData(bytes, name: fileName, mimeType: mime);
+      final bytes = await _resolveDocumentBytes(doc);
+      if (bytes == null) {
+        _showError('Fichier indisponible (vérifiez la connexion).');
+        return;
       }
+      final sharedFile = await _prepareShareFile(
+        bytes: bytes,
+        fileName: fileName,
+        mimeType: mime,
+      );
 
       if (!mounted) return;
       final renderBox = context.findRenderObject() as RenderBox?;
@@ -862,7 +862,7 @@ class _DocumentsScreenState extends State<DocumentsScreen>
       final duplicate = await _documentRepository.importDocumentBytes(
         patientId: _patientId,
         bytes: bytes,
-        fileName: _duplicateFileName(doc.name),
+        fileName: _duplicateFileName(_publicFileNameFor(doc)),
         tags: doc.tags,
         title: '${doc.title} - copie',
       );
@@ -879,6 +879,14 @@ class _DocumentsScreenState extends State<DocumentsScreen>
     }
   }
 
+  String _publicFileNameFor(DocItem doc) {
+    return publicDocumentFileName(
+      storedName: doc.name,
+      title: doc.title,
+      type: doc.type,
+    );
+  }
+
   String _duplicateFileName(String originalName) {
     final trimmed = originalName.trim();
     if (trimmed.isEmpty) return 'document-copie.bin';
@@ -888,7 +896,10 @@ class _DocumentsScreenState extends State<DocumentsScreen>
   }
 
   String _mimeTypeFor(DocItem doc) {
-    final ext = doc.name.split('.').last.toLowerCase();
+    final ext = documentFileExtension(
+      storedName: _publicFileNameFor(doc),
+      type: doc.type,
+    ).replaceFirst('.', '').toLowerCase();
     switch (ext) {
       case 'pdf':
         return 'application/pdf';
@@ -908,6 +919,24 @@ class _DocumentsScreenState extends State<DocumentsScreen>
     }
   }
 
+  Future<XFile> _prepareShareFile({
+    required Uint8List bytes,
+    required String fileName,
+    required String mimeType,
+  }) async {
+    if (kIsWeb) {
+      return XFile.fromData(bytes, name: fileName, mimeType: mimeType);
+    }
+    final root = await getTemporaryDirectory();
+    final shareDir = Directory(
+      '${root.path}/aidhabitat_share_${DateTime.now().microsecondsSinceEpoch}',
+    );
+    await shareDir.create(recursive: true);
+    final file = File('${shareDir.path}/$fileName');
+    await file.writeAsBytes(bytes, flush: true);
+    return XFile(file.path, name: fileName, mimeType: mimeType);
+  }
+
   Future<void> _bulkDownload() async {
     if (_selectedIds.isEmpty) return;
     setState(() => _isBulkDownloading = true);
@@ -924,9 +953,9 @@ class _DocumentsScreenState extends State<DocumentsScreen>
         final bytes = await _resolveDocumentBytes(doc);
         if (bytes == null) continue;
         xFiles.add(
-          XFile.fromData(
-            bytes,
-            name: doc.name.isNotEmpty ? doc.name : '${doc.title}.bin',
+          await _prepareShareFile(
+            bytes: bytes,
+            fileName: _publicFileNameFor(doc),
             mimeType: _mimeTypeFor(doc),
           ),
         );
@@ -959,9 +988,9 @@ class _DocumentsScreenState extends State<DocumentsScreen>
         final bytes = await _resolveDocumentBytes(doc);
         if (bytes == null) continue;
         files.add(
-          XFile.fromData(
-            bytes,
-            name: doc.name.isNotEmpty ? doc.name : '${doc.title}.bin',
+          await _prepareShareFile(
+            bytes: bytes,
+            fileName: _publicFileNameFor(doc),
             mimeType: _mimeTypeFor(doc),
           ),
         );
@@ -1000,7 +1029,7 @@ class _DocumentsScreenState extends State<DocumentsScreen>
         final duplicate = await _documentRepository.importDocumentBytes(
           patientId: _patientId,
           bytes: bytes,
-          fileName: _duplicateFileName(doc.name),
+          fileName: _duplicateFileName(_publicFileNameFor(doc)),
           tags: doc.tags,
           title: '${doc.title} - copie',
         );
@@ -2576,12 +2605,12 @@ class _PreviewScreenState extends State<_PreviewScreen> {
     if (delta == 0) return;
 
     if (_looksLikePdf()) {
-      final original = widget.doc.name.trim().isEmpty
-          ? '${widget.doc.title}.pdf'
-          : widget.doc.name;
-      final fileName = original.toLowerCase().endsWith('.pdf')
-          ? original
-          : '$original.pdf';
+      final fileName = publicDocumentFileName(
+        storedName: widget.doc.name,
+        title: widget.doc.title,
+        mimeType: 'application/pdf',
+        type: 'pdf',
+      );
 
       final rotationService = PdfRotationService.instance;
       var nativeSourcePath = '';
@@ -2668,9 +2697,11 @@ class _PreviewScreenState extends State<_PreviewScreen> {
     if (decoded == null) throw StateError('format image non reconnu');
     final rotated = img.copyRotate(decoded, angle: delta * 90);
     final bytes = Uint8List.fromList(img.encodePng(rotated));
-    final originalName = widget.doc.name.trim().isEmpty
-        ? widget.doc.title
-        : widget.doc.name;
+    final originalName = publicDocumentFileName(
+      storedName: widget.doc.name,
+      title: widget.doc.title,
+      type: widget.doc.type,
+    );
     final dot = originalName.lastIndexOf('.');
     final base = dot > 0 ? originalName.substring(0, dot) : originalName;
     await DocumentRepository().enqueueReplacementBytes(
@@ -2807,9 +2838,18 @@ class _PreviewScreenState extends State<_PreviewScreen> {
         widget.onDownload();
         return;
       }
+      final publicName = publicDocumentFileName(
+        storedName: widget.doc.name,
+        title: widget.doc.title,
+        type: widget.doc.type,
+      );
+      final dot = publicName.lastIndexOf('.');
+      final publicBaseName = dot > 0
+          ? publicName.substring(0, dot)
+          : publicName;
       final baseName = widget.doc.title.isNotEmpty
           ? widget.doc.title
-          : widget.doc.name.split('.').first;
+          : publicBaseName;
       final suggested = '$baseName-annoté.png';
       final saved = await FilePicker.platform.saveFile(
         dialogTitle: 'Enregistrer le document annoté',

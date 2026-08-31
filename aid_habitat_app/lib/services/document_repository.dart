@@ -9,6 +9,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
 
 import '../models/types.dart';
+import 'document_file_naming.dart';
 import 'local_database.dart';
 import 'media_cache_service.dart';
 import 'native_file_protection.dart';
@@ -203,7 +204,11 @@ class DocumentRepository {
       result.add(
         InlineDocumentBytes(
           localId: row['local_id'] as String,
-          fileName: row['file_name'] as String,
+          fileName: publicDocumentFileName(
+            storedName: row['file_name'] as String? ?? '',
+            title: row['title'] as String? ?? '',
+            mimeType: row['mime_type'] as String?,
+          ),
           mimeType: row['mime_type'] as String,
           tags: tags,
           title: row['title'] as String? ?? '',
@@ -886,7 +891,15 @@ class DocumentRepository {
     final title = row['title'] as String? ?? 'Document';
     final tags = (jsonDecode(row['tags_json'] as String? ?? '[]') as List)
         .cast<String>();
-    final extension = p.extension(fileName).replaceFirst('.', '').toLowerCase();
+    final publicFileName = publicDocumentFileName(
+      storedName: fileName,
+      title: title,
+      mimeType: mimeType,
+    );
+    final extension = documentFileExtension(
+      storedName: publicFileName,
+      mimeType: mimeType,
+    ).replaceFirst('.', '').toLowerCase();
     // Le natif synchronise le fichier protégé par son chemin. Éviter une
     // seconde copie Base64 chiffrée dans SQLite réduit fortement le coût d'un
     // PDF tourné ; le navigateur conserve le data URL faute de filesystem.
@@ -903,7 +916,7 @@ class DocumentRepository {
         existingPath: existingPath,
         patientId: patientId,
         documentId: documentId,
-        fileName: fileName,
+        fileName: publicFileName,
         mimeType: mimeType,
       );
 
@@ -920,7 +933,7 @@ class DocumentRepository {
           existingPath: null,
           patientId: patientId,
           documentId: documentId,
-          fileName: fileName,
+          fileName: publicFileName,
           mimeType: mimeType,
         );
       }
@@ -946,7 +959,7 @@ class DocumentRepository {
             : await OfflineVault.instance.sealString(dataUrl),
         'file_ext': extension,
         'mime_type': mimeType,
-        'file_name': fileName,
+        'file_name': publicFileName,
         'local_file_path': localPath,
         'sync_state': SyncState.pendingSync.name,
         'updated_at': now,
@@ -969,7 +982,7 @@ class DocumentRepository {
           else if (dataUrl != null)
             'dataUrl': dataUrl,
           'title': title,
-          'fileName': fileName,
+          'fileName': publicFileName,
           'mimeType': mimeType,
           'tags': tags,
         }),
@@ -1009,7 +1022,15 @@ class DocumentRepository {
     final title = row['title'] as String? ?? 'Document';
     final tags = (jsonDecode(row['tags_json'] as String? ?? '[]') as List)
         .cast<String>();
-    final extension = p.extension(fileName).replaceFirst('.', '').toLowerCase();
+    final publicFileName = publicDocumentFileName(
+      storedName: fileName,
+      title: title,
+      mimeType: mimeType,
+    );
+    final extension = documentFileExtension(
+      storedName: publicFileName,
+      mimeType: mimeType,
+    ).replaceFirst('.', '').toLowerCase();
     final now = DateTime.now().toIso8601String();
 
     final appDir = await getApplicationDocumentsDirectory();
@@ -1019,7 +1040,7 @@ class DocumentRepository {
       existingPath: existingPath,
       patientId: patientId,
       documentId: documentId,
-      fileName: fileName,
+      fileName: publicFileName,
       mimeType: mimeType,
     );
 
@@ -1034,7 +1055,7 @@ class DocumentRepository {
         existingPath: null,
         patientId: patientId,
         documentId: documentId,
-        fileName: fileName,
+        fileName: publicFileName,
         mimeType: mimeType,
       );
     }
@@ -1060,7 +1081,7 @@ class DocumentRepository {
         'local_file_data_url': null,
         'file_ext': extension,
         'mime_type': mimeType,
-        'file_name': fileName,
+        'file_name': publicFileName,
         'local_file_path': localPath,
         'sync_state': SyncState.pendingSync.name,
         'updated_at': now,
@@ -1080,7 +1101,7 @@ class DocumentRepository {
           'documentLocalId': documentId,
           'localPath': localPath,
           'title': title,
-          'fileName': fileName,
+          'fileName': publicFileName,
           'mimeType': mimeType,
           'tags': tags,
         }),
@@ -1687,11 +1708,18 @@ class DocumentRepository {
           continue;
         }
 
-        final fileName = remote['fileName']?.toString() ?? 'document';
-        final extension = p
-            .extension(fileName)
-            .replaceFirst('.', '')
-            .toLowerCase();
+        final rawFileName = remote['fileName']?.toString() ?? 'document';
+        final title = remote['title']?.toString() ?? rawFileName;
+        final mimeType = remote['mimeType']?.toString();
+        final fileName = publicDocumentFileName(
+          storedName: rawFileName,
+          title: title,
+          mimeType: mimeType,
+        );
+        final extension = documentFileExtension(
+          storedName: fileName,
+          mimeType: mimeType,
+        ).replaceFirst('.', '').toLowerCase();
         final localId =
             existing?['local_id'] as String? ??
             _remoteDocumentLocalId(patientId, remote);
@@ -1699,11 +1727,10 @@ class DocumentRepository {
         final row = {
           'local_id': localId,
           'patient_local_id': patientId,
-          'title': remote['title']?.toString() ?? fileName,
+          'title': title,
           'file_name': fileName,
           'file_ext': extension,
-          'mime_type':
-              remote['mimeType']?.toString() ?? _mimeTypeFor(extension),
+          'mime_type': mimeType ?? _mimeTypeFor(extension),
           'local_file_path': existing?['local_file_path'],
           // CRITICAL : preserve the local bytes (web PWA "offline upload").
           // Without this, `conflictAlgorithm: replace` nulls the column and
@@ -1959,8 +1986,20 @@ class DocumentRepository {
   }
 
   Future<DocItem> _mapRow(Map<String, Object?> row) async {
-    final ext = (row['file_ext'] as String? ?? '').toLowerCase();
-    final type = _typeForExtension(ext);
+    final rawFileName = row['file_name'] as String? ?? '';
+    final title = row['title'] as String? ?? rawFileName;
+    final mimeType = row['mime_type'] as String? ?? '';
+    final storedExt = (row['file_ext'] as String? ?? '')
+        .replaceFirst('.', '')
+        .toLowerCase();
+    final inferredExt = documentFileExtension(
+      storedName: rawFileName,
+      mimeType: mimeType,
+    ).replaceFirst('.', '').toLowerCase();
+    final ext = inferredExt == 'bin' && storedExt.isNotEmpty
+        ? storedExt
+        : inferredExt;
+    final type = _typeForExtension(ext, mimeType: mimeType);
     final rawTags = row['tags_json'] as String? ?? '[]';
     final decodedTags = (jsonDecode(rawTags) as List<dynamic>).cast<String>();
     final isReport = decodedTags.any(
@@ -1983,8 +2022,13 @@ class DocumentRepository {
     return DocItem(
       id: row['local_id'] as String,
       type: type,
-      name: row['file_name'] as String,
-      title: row['title'] as String,
+      name: publicDocumentFileName(
+        storedName: rawFileName,
+        title: title,
+        mimeType: mimeType,
+        type: type,
+      ),
+      title: title,
       url: row['remote_public_url'] as String?,
       date: isReport ? updatedAt : createdAt,
       localPath: localPath,
@@ -1999,11 +2043,13 @@ class DocumentRepository {
     );
   }
 
-  String _typeForExtension(String extension) {
+  String _typeForExtension(String extension, {String mimeType = ''}) {
     if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'heic'].contains(extension)) {
       return 'image';
     }
+    if (mimeType.toLowerCase().startsWith('image/')) return 'image';
     if (extension == 'pdf') return 'pdf';
+    if (mimeType.toLowerCase() == 'application/pdf') return 'pdf';
     return 'doc';
   }
 

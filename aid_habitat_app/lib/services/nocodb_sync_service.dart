@@ -9,6 +9,7 @@ import 'package:sqflite/sqflite.dart';
 import '../models/types.dart';
 import 'app_config.dart';
 import 'connectivity_service.dart';
+import 'document_file_naming.dart';
 import 'document_repository.dart';
 import 'dossier_repository.dart';
 import 'local_database.dart';
@@ -1362,9 +1363,14 @@ class NocodbSyncService {
     final localPath = payload['localPath']?.toString();
     final dataUrl = payload['dataUrl']?.toString();
     final title = payload['title']?.toString() ?? 'Document';
-    final fileName = payload['fileName']?.toString() ?? 'document.bin';
+    final rawFileName = payload['fileName']?.toString() ?? 'document.bin';
     final mimeType =
         payload['mimeType']?.toString() ?? 'application/octet-stream';
+    final fileName = publicDocumentFileName(
+      storedName: rawFileName,
+      title: title,
+      mimeType: mimeType,
+    );
     final tags =
         (payload['tags'] as List?)?.map((tag) => '$tag').toList() ?? [];
 
