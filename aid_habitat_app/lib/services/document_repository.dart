@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, visibleForTesting;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
@@ -14,6 +14,59 @@ import 'media_cache_service.dart';
 import 'native_file_protection.dart';
 import 'offline_vault.dart';
 import 'sync_engine.dart';
+
+@visibleForTesting
+String resolveReplacementDocumentPath({
+  required String applicationDocumentsPath,
+  required String? existingPath,
+  required String patientId,
+  required String documentId,
+  required String fileName,
+  required String mimeType,
+}) {
+  final documentsRoot = p.normalize(p.absolute(applicationDocumentsPath));
+  final extension = _replacementExtension(fileName, mimeType);
+  final normalizedExisting = existingPath == null || existingPath.trim().isEmpty
+      ? null
+      : p.normalize(p.absolute(existingPath.trim()));
+
+  // Les UUID de sandbox iOS changent notamment après une réinstallation ou
+  // une mise à jour TestFlight. Un ancien chemin ne doit jamais être réutilisé,
+  // pas plus que la racine du conteneur visible dans le bug BOISSIN Chantal.
+  if (normalizedExisting != null &&
+      p.isWithin(documentsRoot, normalizedExisting) &&
+      p.extension(normalizedExisting).toLowerCase() == extension) {
+    return normalizedExisting;
+  }
+
+  final safePatientId = _safeStorageSegment(patientId, fallback: 'patient');
+  final safeDocumentId = _safeStorageSegment(documentId, fallback: 'document');
+  return p.join(
+    documentsRoot,
+    'offline_documents',
+    safePatientId,
+    '$safeDocumentId$extension',
+  );
+}
+
+String _replacementExtension(String fileName, String mimeType) {
+  final fromName = p.extension(p.basename(fileName)).toLowerCase();
+  if (fromName.isNotEmpty && RegExp(r'^\.[a-z0-9]{1,10}$').hasMatch(fromName)) {
+    return fromName;
+  }
+  if (mimeType == 'application/pdf') return '.pdf';
+  if (mimeType == 'image/jpeg') return '.jpg';
+  if (mimeType == 'image/png') return '.png';
+  return '.bin';
+}
+
+String _safeStorageSegment(String value, {required String fallback}) {
+  final safe = value
+      .trim()
+      .replaceAll(RegExp(r'[^A-Za-z0-9._-]+'), '_')
+      .replaceAll(RegExp(r'^\.+|\.+$'), '');
+  return safe.isEmpty ? fallback : safe;
+}
 
 class DocumentRepositoryChange {
   const DocumentRepositoryChange({
@@ -833,13 +886,44 @@ class DocumentRepository {
     final tags = (jsonDecode(row['tags_json'] as String? ?? '[]') as List)
         .cast<String>();
     final extension = p.extension(fileName).replaceFirst('.', '').toLowerCase();
-    final dataUrl = 'data:$mimeType;base64,${base64Encode(bytes)}';
+    // Le natif synchronise le fichier protégé par son chemin. Éviter une
+    // seconde copie Base64 chiffrée dans SQLite réduit fortement le coût d'un
+    // PDF tourné ; le navigateur conserve le data URL faute de filesystem.
+    final dataUrl = kIsWeb
+        ? 'data:$mimeType;base64,${base64Encode(bytes)}'
+        : null;
     final now = DateTime.now().toIso8601String();
-    String? localPath = row['local_file_path'] as String?;
-    if (!kIsWeb && localPath != null && localPath.isNotEmpty) {
+    String? localPath;
+    if (!kIsWeb) {
+      final appDir = await getApplicationDocumentsDirectory();
+      final existingPath = row['local_file_path'] as String?;
+      localPath = resolveReplacementDocumentPath(
+        applicationDocumentsPath: appDir.path,
+        existingPath: existingPath,
+        patientId: patientId,
+        documentId: documentId,
+        fileName: fileName,
+        mimeType: mimeType,
+      );
+
+      // Un chemin valide syntaxiquement peut malgré tout pointer vers un
+      // dossier ou un lien. Dans ce cas, on force le chemin déterministe sûr.
+      final entityType = await FileSystemEntity.type(
+        localPath,
+        followLinks: false,
+      );
+      if (entityType == FileSystemEntityType.directory ||
+          entityType == FileSystemEntityType.link) {
+        localPath = resolveReplacementDocumentPath(
+          applicationDocumentsPath: appDir.path,
+          existingPath: null,
+          patientId: patientId,
+          documentId: documentId,
+          fileName: fileName,
+          mimeType: mimeType,
+        );
+      }
       await NativeFileProtection.instance.writeProtectedBytes(localPath, bytes);
-    } else {
-      localPath = null;
     }
 
     await db.delete(
@@ -855,10 +939,13 @@ class DocumentRepository {
     await db.update(
       'documents',
       {
-        'local_file_data_url': await OfflineVault.instance.sealString(dataUrl),
+        'local_file_data_url': dataUrl == null
+            ? null
+            : await OfflineVault.instance.sealString(dataUrl),
         'file_ext': extension,
         'mime_type': mimeType,
         'file_name': fileName,
+        'local_file_path': localPath,
         'sync_state': SyncState.pendingSync.name,
         'updated_at': now,
       },
@@ -875,7 +962,10 @@ class DocumentRepository {
         jsonEncode({
           'patientLocalId': patientId,
           'documentLocalId': documentId,
-          if (localPath != null) 'localPath': localPath else 'dataUrl': dataUrl,
+          if (localPath != null)
+            'localPath': localPath
+          else if (dataUrl != null)
+            'dataUrl': dataUrl,
           'title': title,
           'fileName': fileName,
           'mimeType': mimeType,

@@ -2522,13 +2522,21 @@ class _PreviewScreenState extends State<_PreviewScreen> {
       if (mounted) setState(() {});
     } catch (err) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Enregistrement impossible : $err')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(_saveErrorMessage(err))));
       }
     } finally {
       if (mounted) setState(() => _saving = false);
     }
+  }
+
+  String _saveErrorMessage(Object error) {
+    if (error is FileSystemException) {
+      return 'Enregistrement impossible dans le stockage local. '
+          'Fermez le document puis réessayez.';
+    }
+    return 'Enregistrement impossible : $error';
   }
 
   void _rotateClockwise() {
@@ -2806,14 +2814,7 @@ class _PreviewScreenState extends State<_PreviewScreen> {
                   child: Column(
                     children: [
                       _buildToolbar(),
-                      Expanded(
-                        child: AnimatedRotation(
-                          turns: _rotationQuarterTurns / 4,
-                          duration: const Duration(milliseconds: 280),
-                          curve: Curves.easeInOutCubic,
-                          child: _buildPreviewBody(),
-                        ),
-                      ),
+                      Expanded(child: _buildPreviewBody()),
                     ],
                   ),
                 ),
@@ -2966,6 +2967,7 @@ class _PreviewScreenState extends State<_PreviewScreen> {
       return _ImageAnnotator(
         key: _annotatorKey,
         imagePath: doc.localPath!,
+        rotationQuarterTurns: _rotationQuarterTurns,
         onChanged: () => setState(() {}),
       );
     }
@@ -2980,6 +2982,7 @@ class _PreviewScreenState extends State<_PreviewScreen> {
           return _ImageAnnotator(
             key: _annotatorKey,
             imageBytes: bytes,
+            rotationQuarterTurns: _rotationQuarterTurns,
             onChanged: () => setState(() {}),
           );
         } catch (_) {
@@ -2993,6 +2996,7 @@ class _PreviewScreenState extends State<_PreviewScreen> {
       return _RemoteImageAnnotatorWrapper(
         url: doc.url!,
         annotatorKey: _annotatorKey,
+        rotationQuarterTurns: _rotationQuarterTurns,
         onChanged: () => setState(() {}),
         fallback: _remoteOrIcon(),
       );
@@ -3013,6 +3017,7 @@ class _PreviewScreenState extends State<_PreviewScreen> {
       return _PdfAnnotatorWrapper(
         pdfPath: doc.localPath!,
         wrapperKey: _pdfWrapperKey,
+        rotationQuarterTurns: _rotationQuarterTurns,
         onChanged: () => setState(() {}),
       );
     }
@@ -3025,6 +3030,7 @@ class _PreviewScreenState extends State<_PreviewScreen> {
       return _RemotePdfAnnotatorWrapper(
         doc: doc,
         wrapperKey: _pdfWrapperKey,
+        rotationQuarterTurns: _rotationQuarterTurns,
         onChanged: () => setState(() {}),
       );
     }
@@ -3038,6 +3044,7 @@ class _PreviewScreenState extends State<_PreviewScreen> {
       return _WebPdfAnnotatorWrapper(
         doc: doc,
         wrapperKey: _webPdfWrapperKey,
+        rotationQuarterTurns: _rotationQuarterTurns,
         onChanged: () => setState(() {}),
       );
     }
@@ -3251,11 +3258,13 @@ class _WebPdfAnnotatorWrapper extends StatefulWidget {
   const _WebPdfAnnotatorWrapper({
     required this.doc,
     required this.onChanged,
+    required this.rotationQuarterTurns,
     this.wrapperKey,
   }) : super(key: wrapperKey);
 
   final DocItem doc;
   final VoidCallback onChanged;
+  final int rotationQuarterTurns;
   final GlobalKey<_WebPdfAnnotatorWrapperState>? wrapperKey;
 
   @override
@@ -3601,6 +3610,7 @@ class _WebPdfAnnotatorWrapperState extends State<_WebPdfAnnotatorWrapper> {
               : _ImageAnnotator(
                   key: _liveAnnotatorKey,
                   imageBytes: _currentImage,
+                  rotationQuarterTurns: widget.rotationQuarterTurns,
                   onChanged: widget.onChanged,
                   onPageSwipe: (delta) {
                     if (delta > 0 && _currentPage < _totalPages) {
@@ -3654,11 +3664,13 @@ class _WebPdfAnnotatorWrapperState extends State<_WebPdfAnnotatorWrapper> {
 class _RemotePdfAnnotatorWrapper extends StatefulWidget {
   final DocItem doc;
   final VoidCallback onChanged;
+  final int rotationQuarterTurns;
   final GlobalKey<_PdfAnnotatorWrapperState>? wrapperKey;
 
   const _RemotePdfAnnotatorWrapper({
     required this.doc,
     required this.onChanged,
+    required this.rotationQuarterTurns,
     this.wrapperKey,
   });
 
@@ -3844,6 +3856,7 @@ class _RemotePdfAnnotatorWrapperState
     return _PdfAnnotatorWrapper(
       pdfPath: pdfPath,
       wrapperKey: widget.wrapperKey,
+      rotationQuarterTurns: widget.rotationQuarterTurns,
       onChanged: widget.onChanged,
     );
   }
@@ -3855,6 +3868,7 @@ class _RemotePdfAnnotatorWrapperState
 class _PdfAnnotatorWrapper extends StatefulWidget {
   final String pdfPath;
   final VoidCallback onChanged;
+  final int rotationQuarterTurns;
 
   /// Clé pour permettre au parent d'appeler `saveAll()` — écrit toutes les
   /// pages modifiées sur disque en une fois.
@@ -3863,6 +3877,7 @@ class _PdfAnnotatorWrapper extends StatefulWidget {
   const _PdfAnnotatorWrapper({
     required this.pdfPath,
     required this.onChanged,
+    required this.rotationQuarterTurns,
     this.wrapperKey,
   }) : super(key: wrapperKey);
 
@@ -4073,6 +4088,7 @@ class _PdfAnnotatorWrapperState extends State<_PdfAnnotatorWrapper> {
           child: _ImageAnnotator(
             key: _liveAnnotatorKey,
             imagePath: pngPath,
+            rotationQuarterTurns: widget.rotationQuarterTurns,
             onChanged: widget.onChanged,
             onPageSwipe: (delta) {
               final target = _currentPage + delta;
@@ -4165,12 +4181,14 @@ class _RemoteImageAnnotatorWrapper extends StatefulWidget {
   final String url;
   final GlobalKey<_ImageAnnotatorState> annotatorKey;
   final VoidCallback onChanged;
+  final int rotationQuarterTurns;
   final Widget fallback;
 
   const _RemoteImageAnnotatorWrapper({
     required this.url,
     required this.annotatorKey,
     required this.onChanged,
+    required this.rotationQuarterTurns,
     required this.fallback,
   });
 
@@ -4326,6 +4344,7 @@ class _RemoteImageAnnotatorWrapperState
       key: widget.annotatorKey,
       imagePath: _file?.path,
       imageBytes: _bytes,
+      rotationQuarterTurns: widget.rotationQuarterTurns,
       onChanged: widget.onChanged,
     );
   }
@@ -4340,6 +4359,7 @@ class _ImageAnnotator extends StatefulWidget {
   final Uint8List? imageBytes;
 
   final VoidCallback onChanged;
+  final int rotationQuarterTurns;
 
   /// Swipe horizontal tactile demandé par les PDF multipages.
   /// `1` ouvre la page suivante, `-1` la page précédente.
@@ -4361,6 +4381,7 @@ class _ImageAnnotator extends StatefulWidget {
     this.imagePath,
     this.imageBytes,
     required this.onChanged,
+    required this.rotationQuarterTurns,
     this.onPageSwipe,
     this.initialStrokes,
     this.autoPersistToDisk = true,
@@ -4460,6 +4481,15 @@ class _ImageAnnotatorState extends State<_ImageAnnotator>
       ..removeListener(_handleTransformationChanged)
       ..dispose();
     super.dispose();
+  }
+
+  @override
+  void didUpdateWidget(covariant _ImageAnnotator oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.rotationQuarterTurns != widget.rotationQuarterTurns) {
+      _zoomResetController.stop();
+      _transformationController.value = Matrix4.identity();
+    }
   }
 
   Future<void> _loadAnnotation() async {
@@ -4688,6 +4718,8 @@ class _ImageAnnotatorState extends State<_ImageAnnotator>
     _zoomResetController.forward(from: 0);
   }
 
+  int get _normalizedRotationQuarterTurns => widget.rotationQuarterTurns % 4;
+
   bool _isDrawingDevice(PointerEvent event) {
     if (event.kind == ui.PointerDeviceKind.stylus ||
         event.kind == ui.PointerDeviceKind.invertedStylus) {
@@ -4800,8 +4832,15 @@ class _ImageAnnotatorState extends State<_ImageAnnotator>
             color: Color(0xFF0E1116),
             child: LayoutBuilder(
               builder: (context, constraints) {
-                final size = Size(constraints.maxWidth, constraints.maxHeight);
-                _canvasSize = size;
+                final viewportSize = Size(
+                  constraints.maxWidth,
+                  constraints.maxHeight,
+                );
+                final turns = _normalizedRotationQuarterTurns;
+                final surfaceSize = turns.isOdd
+                    ? Size(viewportSize.height, viewportSize.width)
+                    : viewportSize;
+                _canvasSize = surfaceSize;
                 return InteractiveViewer(
                   transformationController: _transformationController,
                   minScale: 0.5,
@@ -4816,11 +4855,20 @@ class _ImageAnnotatorState extends State<_ImageAnnotator>
                   onInteractionStart: (_) => _zoomResetController.stop(),
                   onInteractionEnd: (_) => _animateZoomToOrigin(),
                   child: SizedBox(
-                    width: size.width,
-                    height: size.height,
-                    child: RepaintBoundary(
-                      key: _boundaryKey,
-                      child: _buildImageWithOverlay(),
+                    width: viewportSize.width,
+                    height: viewportSize.height,
+                    child: Center(
+                      child: RotatedBox(
+                        quarterTurns: turns,
+                        child: SizedBox(
+                          width: surfaceSize.width,
+                          height: surfaceSize.height,
+                          child: RepaintBoundary(
+                            key: _boundaryKey,
+                            child: _buildImageWithOverlay(),
+                          ),
+                        ),
+                      ),
                     ),
                   ),
                 );

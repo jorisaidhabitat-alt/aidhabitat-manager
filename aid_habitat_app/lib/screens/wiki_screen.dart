@@ -2,7 +2,9 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:lucide_icons/lucide_icons.dart';
@@ -14,9 +16,11 @@ import '../components/confirmation_dialog.dart';
 import '../components/soft_transitions.dart';
 import '../models/types.dart';
 import '../services/data_service.dart';
+import '../services/media_cache_service.dart';
 import '../services/sync_engine.dart';
 import '../services/url_resolver.dart';
 import '../services/wiki_repository.dart';
+import '../services/wiki_share_image.dart';
 
 class WikiScreen extends StatefulWidget {
   const WikiScreen({super.key});
@@ -271,35 +275,40 @@ class _WikiScreenState extends State<WikiScreen> {
 
   Future<void> _shareItem(WikiItem item) async {
     try {
-      final descriptions = item.descriptionsList;
-      final buffer = StringBuffer(item.title.trim());
-      final tag = item.tags.isNotEmpty ? item.tags.first.trim() : '';
-      if (tag.isNotEmpty) {
-        buffer
-          ..writeln()
-          ..writeln(tag);
+      final bytes = await _resolveWikiImageBytes(item);
+      if (bytes == null || bytes.isEmpty) {
+        if (mounted) {
+          _showSnack(
+            'Image indisponible. Vérifiez la connexion puis réessayez.',
+          );
+        }
+        return;
       }
-      if (descriptions.isNotEmpty) {
-        buffer
-          ..writeln()
-          ..writeln(descriptions.join('\n\n'));
+      final sourceHint = item.pendingImageDataUrl.trim().isNotEmpty
+          ? item.pendingImageDataUrl
+          : item.imageUrl;
+      final format = detectWikiShareImageFormat(bytes, sourceHint: sourceHint);
+      if (format == null) {
+        if (mounted) _showSnack('Le format de cette image n’est pas reconnu.');
+        return;
       }
-      final resolvedImageUrl = resolveMediaUrl(item.imageUrl).trim();
-      if (resolvedImageUrl.isNotEmpty &&
-          !resolvedImageUrl.startsWith('data:')) {
-        buffer
-          ..writeln()
-          ..writeln(resolvedImageUrl);
-      }
+      final fileName = wikiShareImageFileName(item.title, format);
+      final sharedImage = XFile.fromData(
+        bytes,
+        name: fileName,
+        mimeType: format.mimeType,
+      );
 
+      if (!mounted) return;
       final box = context.findRenderObject() as RenderBox?;
       final origin = box == null
           ? const Rect.fromLTWH(0, 0, 1, 1)
           : box.localToGlobal(Offset.zero) & box.size;
-      await Share.share(
-        buffer.toString(),
+      await Share.shareXFiles(
+        [sharedImage],
         subject: item.title,
         sharePositionOrigin: origin,
+        fileNameOverrides: [fileName],
       );
     } catch (err) {
       if (!mounted) return;
@@ -307,29 +316,42 @@ class _WikiScreenState extends State<WikiScreen> {
     }
   }
 
-  Future<void> _showItemActions(WikiItem item) async {
-    if (_isModalOpen || !mounted) return;
-    final action = await showModalBottomSheet<_WikiItemAction>(
-      context: context,
-      showDragHandle: true,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
-      ),
-      builder: (context) => _WikiItemActionsSheet(item: item),
-    );
-    if (action == null || !mounted) return;
-
-    switch (action) {
-      case _WikiItemAction.edit:
-        await _openItem(item);
-      case _WikiItemAction.share:
-        await _shareItem(item);
-      case _WikiItemAction.duplicate:
-        await _duplicateItem(item);
-      case _WikiItemAction.delete:
-        await _deleteItem(item);
+  Future<Uint8List?> _resolveWikiImageBytes(WikiItem item) async {
+    final pending = item.pendingImageDataUrl.trim();
+    if (pending.isNotEmpty) {
+      final decoded = decodeWikiImageDataUrl(pending);
+      if (decoded != null && decoded.isNotEmpty) return decoded;
     }
+
+    final rawUrl = item.imageUrl.trim();
+    if (rawUrl.isEmpty) return null;
+    final inline = decodeWikiImageDataUrl(rawUrl);
+    if (inline != null && inline.isNotEmpty) return inline;
+
+    final assetPath = bundledMediaAssetPath(rawUrl);
+    if (assetPath != null) {
+      try {
+        final data = await rootBundle.load(assetPath);
+        return data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
+      } catch (_) {
+        // Asset absent : le cache/réseau reste disponible en fallback.
+      }
+    }
+
+    final resolvedUrl = resolveMediaUrl(rawUrl).trim();
+    if (resolvedUrl.isEmpty) return null;
+    final headers = MediaCacheService.authHeadersFor(resolvedUrl);
+    if (kIsWeb) {
+      return MediaCacheService.instance.webCachedFetch(
+        resolvedUrl,
+        headers: headers.isEmpty ? null : headers,
+      );
+    }
+    final bytes = await MediaCacheService.instance.readBytes(
+      resolvedUrl,
+      headers: headers.isEmpty ? null : headers,
+    );
+    return bytes == null ? null : Uint8List.fromList(bytes);
   }
 
   void _showSnack(String message) {
@@ -478,7 +500,6 @@ class _WikiScreenState extends State<WikiScreen> {
                         primaryTag: primaryTag,
                         heroBg: _colorForCategory(item.category),
                         onTap: () => _openItem(item),
-                        onLongPress: () => _showItemActions(item),
                         onEdit: () => _openItem(item),
                         onShare: () => _shareItem(item),
                         onDuplicate: () => _duplicateItem(item),
@@ -1728,92 +1749,6 @@ class _FilterChip extends StatelessWidget {
 
 enum _WikiItemAction { edit, share, duplicate, delete }
 
-class _WikiItemActionsSheet extends StatelessWidget {
-  const _WikiItemActionsSheet({required this.item});
-
-  final WikiItem item;
-
-  @override
-  Widget build(BuildContext context) {
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              item.title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontSize: 17,
-                fontWeight: FontWeight.w700,
-                color: Color(0xFF0E1116),
-              ),
-            ),
-            const SizedBox(height: 12),
-            const _WikiActionTile(
-              action: _WikiItemAction.edit,
-              icon: LucideIcons.pencil,
-              label: 'Modifier',
-            ),
-            const _WikiActionTile(
-              action: _WikiItemAction.share,
-              icon: LucideIcons.share2,
-              label: 'Partager',
-            ),
-            const _WikiActionTile(
-              action: _WikiItemAction.duplicate,
-              icon: LucideIcons.copy,
-              label: 'Dupliquer',
-            ),
-            const Divider(height: 12),
-            const _WikiActionTile(
-              action: _WikiItemAction.delete,
-              icon: LucideIcons.trash2,
-              label: 'Supprimer',
-              color: Color(0xFFB91C1C),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _WikiActionTile extends StatelessWidget {
-  const _WikiActionTile({
-    required this.action,
-    required this.icon,
-    required this.label,
-    this.color = kBrandDarkPurple,
-  });
-
-  final _WikiItemAction action;
-  final IconData icon;
-  final String label;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return ListTile(
-      contentPadding: EdgeInsets.zero,
-      minLeadingWidth: 28,
-      leading: Icon(icon, size: 20, color: color),
-      title: Text(
-        label,
-        style: TextStyle(
-          color: color,
-          fontSize: 15,
-          fontWeight: FontWeight.w600,
-        ),
-      ),
-      onTap: () => Navigator.of(context).pop(action),
-    );
-  }
-}
-
 /// Étiquette de date pour une carte bibliothèque : "Modifié le …" si
 /// `updatedAt` diffère de `createdAt`, sinon "Ajouté le …", sinon
 /// "Nouveau". Format DD/MM/YYYY. Symétrique de `_buildDateLabel` côté
@@ -1857,7 +1792,6 @@ class _WikiCard extends StatefulWidget {
   final String? primaryTag;
   final Color heroBg;
   final VoidCallback onTap;
-  final VoidCallback onLongPress;
   final VoidCallback onEdit;
   final VoidCallback onShare;
   final VoidCallback onDuplicate;
@@ -1868,7 +1802,6 @@ class _WikiCard extends StatefulWidget {
     required this.primaryTag,
     required this.heroBg,
     required this.onTap,
-    required this.onLongPress,
     required this.onEdit,
     required this.onShare,
     required this.onDuplicate,
@@ -1881,6 +1814,120 @@ class _WikiCard extends StatefulWidget {
 
 class _WikiCardState extends State<_WikiCard> {
   bool _hover = false;
+
+  void _handleAction(_WikiItemAction action) {
+    switch (action) {
+      case _WikiItemAction.edit:
+        widget.onEdit();
+      case _WikiItemAction.share:
+        widget.onShare();
+      case _WikiItemAction.duplicate:
+        widget.onDuplicate();
+      case _WikiItemAction.delete:
+        widget.onDelete();
+    }
+  }
+
+  List<PopupMenuEntry<_WikiItemAction>> _buildActionItems() {
+    return const [
+      PopupMenuItem(
+        value: _WikiItemAction.edit,
+        child: _WikiPopupActionLabel(
+          icon: LucideIcons.pencil,
+          label: 'Modifier',
+        ),
+      ),
+      PopupMenuItem(
+        value: _WikiItemAction.share,
+        child: _WikiPopupActionLabel(
+          icon: LucideIcons.share2,
+          label: 'Partager',
+        ),
+      ),
+      PopupMenuItem(
+        value: _WikiItemAction.duplicate,
+        child: _WikiPopupActionLabel(
+          icon: LucideIcons.copy,
+          label: 'Dupliquer',
+        ),
+      ),
+      PopupMenuDivider(),
+      PopupMenuItem(
+        value: _WikiItemAction.delete,
+        child: _WikiPopupActionLabel(
+          icon: LucideIcons.trash2,
+          label: 'Supprimer',
+          color: Color(0xFFB91C1C),
+        ),
+      ),
+    ];
+  }
+
+  Future<void> _showLongPressMenu() async {
+    final box = context.findRenderObject() as RenderBox?;
+    final overlay =
+        Overlay.of(context).context.findRenderObject() as RenderBox?;
+    if (box == null || overlay == null) return;
+
+    final anchor = box.localToGlobal(
+      Offset(box.size.width / 2, box.size.height / 2),
+      ancestor: overlay,
+    );
+    final action = await showMenu<_WikiItemAction>(
+      context: context,
+      position: RelativeRect.fromLTRB(
+        anchor.dx,
+        anchor.dy,
+        overlay.size.width - anchor.dx,
+        overlay.size.height - anchor.dy,
+      ),
+      color: Colors.white,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      items: _buildActionItems(),
+    );
+    if (!mounted || action == null) return;
+    _handleAction(action);
+  }
+
+  Widget _buildActionsButton() {
+    return SizedBox(
+      width: 34,
+      height: 34,
+      child: PopupMenuButton<_WikiItemAction>(
+        tooltip: 'Actions',
+        icon: const Icon(
+          LucideIcons.moreVertical,
+          size: 18,
+          color: Color(0xFF8A939D),
+        ),
+        padding: EdgeInsets.zero,
+        splashRadius: 18,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        onSelected: _handleAction,
+        itemBuilder: (context) => _buildActionItems(),
+      ),
+    );
+  }
+
+  Widget _buildTagChip(String tag) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF2F4F6),
+        borderRadius: BorderRadius.circular(50),
+      ),
+      child: Text(
+        tag,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          color: Color(0xFF5C6670),
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1916,7 +1963,7 @@ class _WikiCardState extends State<_WikiCard> {
         clipBehavior: Clip.antiAlias,
         child: InkWell(
           onTap: widget.onTap,
-          onLongPress: widget.onLongPress,
+          onLongPress: _showLongPressMenu,
           splashColor: Colors.transparent,
           highlightColor: Colors.transparent,
           hoverColor: Colors.transparent,
@@ -1932,112 +1979,29 @@ class _WikiCardState extends State<_WikiCard> {
                 height: 140,
                 width: double.infinity,
                 color: widget.heroBg,
-                child: Stack(
-                  children: [
-                    Positioned.fill(
-                      child:
-                          (item.imageUrl.isNotEmpty ||
-                              item.pendingImageDataUrl.isNotEmpty)
-                          ? CachedRemoteImage(
-                              url: resolveMediaUrl(item.imageUrl),
-                              pendingDataUrl: item.pendingImageDataUrl,
-                              fit: BoxFit.cover,
-                              width: double.infinity,
-                              errorWidget: const Center(
-                                child: Icon(
-                                  LucideIcons.image,
-                                  size: 42,
-                                  color: Colors.black54,
-                                ),
-                              ),
-                            )
-                          : const Center(
-                              child: Icon(
-                                LucideIcons.image,
-                                size: 42,
-                                color: Colors.black54,
-                              ),
-                            ),
-                    ),
-                    Positioned(
-                      top: 8,
-                      right: 8,
-                      child: PopupMenuButton<_WikiItemAction>(
-                        tooltip: 'Actions',
-                        icon: Container(
-                          width: 30,
-                          height: 30,
-                          alignment: Alignment.center,
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.92),
-                            shape: BoxShape.circle,
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.10),
-                                blurRadius: 8,
-                                offset: const Offset(0, 2),
-                              ),
-                            ],
-                          ),
-                          child: const Icon(
-                            LucideIcons.moreVertical,
-                            size: 17,
-                            color: Color(0xFF5C6670),
+                child:
+                    (item.imageUrl.isNotEmpty ||
+                        item.pendingImageDataUrl.isNotEmpty)
+                    ? CachedRemoteImage(
+                        url: resolveMediaUrl(item.imageUrl),
+                        pendingDataUrl: item.pendingImageDataUrl,
+                        fit: BoxFit.cover,
+                        width: double.infinity,
+                        errorWidget: const Center(
+                          child: Icon(
+                            LucideIcons.image,
+                            size: 42,
+                            color: Colors.black54,
                           ),
                         ),
-                        padding: EdgeInsets.zero,
-                        splashRadius: 18,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
+                      )
+                    : const Center(
+                        child: Icon(
+                          LucideIcons.image,
+                          size: 42,
+                          color: Colors.black54,
                         ),
-                        onSelected: (action) {
-                          switch (action) {
-                            case _WikiItemAction.edit:
-                              widget.onEdit();
-                            case _WikiItemAction.share:
-                              widget.onShare();
-                            case _WikiItemAction.duplicate:
-                              widget.onDuplicate();
-                            case _WikiItemAction.delete:
-                              widget.onDelete();
-                          }
-                        },
-                        itemBuilder: (context) => const [
-                          PopupMenuItem(
-                            value: _WikiItemAction.edit,
-                            child: _WikiPopupActionLabel(
-                              icon: LucideIcons.pencil,
-                              label: 'Modifier',
-                            ),
-                          ),
-                          PopupMenuItem(
-                            value: _WikiItemAction.share,
-                            child: _WikiPopupActionLabel(
-                              icon: LucideIcons.share2,
-                              label: 'Partager',
-                            ),
-                          ),
-                          PopupMenuItem(
-                            value: _WikiItemAction.duplicate,
-                            child: _WikiPopupActionLabel(
-                              icon: LucideIcons.copy,
-                              label: 'Dupliquer',
-                            ),
-                          ),
-                          PopupMenuDivider(),
-                          PopupMenuItem(
-                            value: _WikiItemAction.delete,
-                            child: _WikiPopupActionLabel(
-                              icon: LucideIcons.trash2,
-                              label: 'Supprimer',
-                              color: Color(0xFFB91C1C),
-                            ),
-                          ),
-                        ],
                       ),
-                    ),
-                  ],
-                ),
               ),
               // ---------- Text content ----------
               // Anatomie identique aux cartes Caisses :
@@ -2075,35 +2039,26 @@ class _WikiCardState extends State<_WikiCard> {
                           letterSpacing: 1.2,
                         ),
                       ),
+                      const Spacer(),
                       // Widget : pastille avec le tag primaire — même
                       // style que le chip téléphone des cartes Caisses
                       // (fond gris très clair, texte slate-700). Pas
                       // d'icône — uniquement le texte du tag.
-                      if (widget.primaryTag != null) ...[
-                        const SizedBox(height: 10),
-                        Align(
-                          alignment: Alignment.centerLeft,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 6,
-                            ),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFF2F4F6),
-                              borderRadius: BorderRadius.circular(50),
-                            ),
-                            child: Text(
-                              widget.primaryTag!,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w700,
-                                color: Color(0xFF5C6670),
-                              ),
-                            ),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          Expanded(
+                            child: widget.primaryTag == null
+                                ? const SizedBox.shrink()
+                                : Align(
+                                    alignment: Alignment.centerLeft,
+                                    child: _buildTagChip(widget.primaryTag!),
+                                  ),
                           ),
-                        ),
-                      ],
+                          const SizedBox(width: 8),
+                          _buildActionsButton(),
+                        ],
+                      ),
                     ],
                   ),
                 ),
